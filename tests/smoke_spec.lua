@@ -1,0 +1,5 @@
+describe("test harness", function()
+  it("runs plenary busted tests", function()
+    assert.are.equal(2, 1 + 1)
+  end)
+end)
