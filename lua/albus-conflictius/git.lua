@@ -38,6 +38,9 @@ function M.git_dir(cwd)
   if dir == "" then
     return nil
   end
+  if dir:sub(1, 1) ~= "/" then
+    dir = cwd .. "/" .. dir
+  end
   return dir
 end
 

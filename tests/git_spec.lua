@@ -39,7 +39,7 @@ describe("albus-conflictius.git", function()
       stub(function()
         return { code = 0, stdout = ".git\n", stderr = "" }
       end)
-      assert.are.equal(".git", git.git_dir("/repo"))
+      assert.are.equal("/repo/.git", git.git_dir("/repo"))
     end)
 
     it("returns nil when not a git repo", function()
