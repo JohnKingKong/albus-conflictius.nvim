@@ -166,7 +166,15 @@ function M.celebrate(handle, on_done)
     on_done()
     return
   end
-  require("albus-conflictius.celebrate").play(handle.bufnr, handle.win, on_done)
+  -- This runs from inside a BufWritePost callback -- if the celebration ever fails to load or
+  -- start for any reason, fall back to on_done() so the dashboard still closes/refreshes instead
+  -- of getting stuck showing stale content with no way forward.
+  local ok = pcall(function()
+    require("albus-conflictius.celebrate").play(handle.bufnr, handle.win, on_done)
+  end)
+  if not ok then
+    on_done()
+  end
 end
 
 return M

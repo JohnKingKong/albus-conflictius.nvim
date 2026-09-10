@@ -3,6 +3,7 @@ describe("albus-conflictius.celebrate", function()
 
   before_each(function()
     package.loaded["albus-conflictius.celebrate"] = nil
+    package.loaded["albus-conflictius.banner"] = nil
     celebrate = require("albus-conflictius.celebrate")
   end)
 
@@ -18,10 +19,22 @@ describe("albus-conflictius.celebrate", function()
       assert.are.same(celebrate.frame(1), celebrate.frame(celebrate.frame_count() + 1))
     end)
 
-    it("includes the celebration message", function()
+    it("includes the wizard art (static) and the celebration message", function()
       local lines = celebrate.frame(1)
       local joined = table.concat(lines, "\n")
       assert.is_true(joined:find("CONFLICT", 1, true) ~= nil)
+      local banner = require("albus-conflictius.banner")
+      local art_first_line = banner.art()[1]
+      assert.is_true(joined:find(art_first_line, 1, true) ~= nil)
+    end)
+
+    it("keeps the wizard art identical across frames (no motion)", function()
+      local banner = require("albus-conflictius.banner")
+      local art = table.concat(banner.art(), "\n")
+      for i = 1, celebrate.frame_count() do
+        local joined = table.concat(celebrate.frame(i), "\n")
+        assert.is_true(joined:find(art, 1, true) ~= nil)
+      end
     end)
 
     it("produces different content across at least some frames (it actually animates)", function()

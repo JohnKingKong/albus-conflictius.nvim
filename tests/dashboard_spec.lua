@@ -140,5 +140,27 @@ describe("albus-conflictius.dashboard", function()
 
       assert.is_true(done)
     end)
+
+    it("still calls on_done if the celebration module fails to load or play", function()
+      local handle = dashboard.open({ "a.lua" }, {})
+      local real_celebrate = package.loaded["albus-conflictius.celebrate"]
+      package.loaded["albus-conflictius.celebrate"] = {
+        play = function()
+          error("simulated celebration failure")
+        end,
+      }
+
+      local done = false
+      dashboard.celebrate(handle, function()
+        done = true
+      end)
+
+      package.loaded["albus-conflictius.celebrate"] = real_celebrate
+      assert.is_true(done)
+
+      if vim.api.nvim_win_is_valid(handle.win) then
+        vim.api.nvim_win_close(handle.win, true)
+      end
+    end)
   end)
 end)

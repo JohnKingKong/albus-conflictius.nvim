@@ -1,5 +1,7 @@
 local M = {}
 
+local banner = require("albus-conflictius.banner")
+
 local LASER_WIDTH = 33
 
 -- `default = true` so these only apply when the colorscheme/user hasn't already defined them --
@@ -72,8 +74,9 @@ end
 -- Frames are generated, not hand-drawn: two sparkle rows cycle through a small set of scatter
 -- patterns, and a "laser" row's spark ping-pongs left-right across the width, around a message
 -- whose border alternates. `message` is fixed for the whole playback (chosen once by
--- `play`/`random_message`), not re-picked per frame. No wizard art here -- this plays inside the
--- dashboard's own window at its current size, not resized to fit anything bigger.
+-- `play`/`random_message`), not re-picked per frame. The wizard art sits in the middle, static --
+-- it doesn't move or mirror, it's just the recognizable anchor for the fireworks around it. This
+-- plays inside the dashboard's own window at its current size, never resized to fit anything.
 -- Returns (lines, highlights) -- highlights is a list of {row, col, hl_group} (0-based, single
 -- character wide) plus border ranges, applied by `play` as extmarks.
 function M.frame(index, message)
@@ -97,6 +100,12 @@ function M.frame(index, message)
   push(row1, marks1)
   local row2, marks2 = sparkle_row(SPARKLE_PATTERNS[(i % #SPARKLE_PATTERNS) + 1])
   push(row2, marks2)
+  push("")
+
+  for _, line in ipairs(banner.art()) do
+    push(line)
+  end
+
   push("")
 
   local span = LASER_WIDTH - 2

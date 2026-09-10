@@ -73,10 +73,11 @@ visually distinct without reading the marker text. Override
 
 When the last conflicted file in the repo is resolved, the dashboard plays a
 short animation before closing: colorful fireworks and a sweeping laser beam
-around a whimsical banner message picked once at random (e.g. "ALAKAZAM!
-ALL CONFLICTS VANISHED!"). It plays inside the dashboard's own window at
-its current size -- it never resizes anything. Press <CR>, q, or <Esc> to
-skip it. Disable it entirely with `celebrate = false` (see
+around the (static) wizard and a whimsical banner message picked once at
+random (e.g. "ALAKAZAM! ALL CONFLICTS VANISHED!"). It plays inside the
+dashboard's own window at its current size -- it never resizes anything.
+Press <CR>, q, or <Esc> to skip it. Disable it entirely with
+`celebrate = false` (see
 |albus-conflictius-configuration|).
 
 ==============================================================================
