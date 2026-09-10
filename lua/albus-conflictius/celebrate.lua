@@ -117,6 +117,24 @@ function M.frame_count()
   return 8
 end
 
+-- Ping-pongs the laser's spark across the full inner span (columns 2..width-1, staying inside the
+-- `|` end caps) over the course of a `frame_count()`-frame cycle. The sweep is scaled to
+-- `frame_count()`, not to `width` -- an earlier version scaled it to `width` directly (a step per
+-- physical column), which meant the spark only ever covered as many columns as there were frames
+-- in a full cycle before `M.frame` wrapped `index` back to frame 1, leaving it stuck sweeping the
+-- first several columns and never reaching the rest of a wide window.
+local function laser_spark_position(i, width)
+  local period = M.frame_count()
+  local half = math.max(1, math.floor(period / 2))
+  local step = (i - 1) % period
+  if step > half then
+    step = period - step
+  end
+  local span = math.max(1, width - 3)
+  local spark_pos = 2 + math.floor((step / half) * span + 0.5)
+  return math.min(math.max(spark_pos, 2), width - 1)
+end
+
 -- Frames are generated, not hand-drawn. Two solid sparkle rows sit above the (static) wizard art,
 -- pasted in as-is at its own hand-authored position (its shape depends on each line's own leading
 -- whitespace, so it's never centered/padded like the rest of the frame). Below the wizard is a
@@ -158,13 +176,7 @@ function M.frame(index, message, width)
 
   push("")
 
-  local span = math.max(1, width - 2)
-  local cycle = math.max(2, 2 * span)
-  local pos = (i - 1) % cycle
-  if pos >= span then
-    pos = cycle - pos
-  end
-  local laser_line, laser_marks = laser_row(width, pos + 2, i)
+  local laser_line, laser_marks = laser_row(width, laser_spark_position(i, width), i)
   push(laser_line, laser_marks)
 
   local pad = center_pad(width, #message)

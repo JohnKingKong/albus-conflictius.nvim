@@ -149,6 +149,24 @@ describe("albus-conflictius.celebrate", function()
       assert.are.equal(other_width, #other_lines[#other_lines])
     end)
 
+    it("sweeps the laser spark across the full inner width, not just the first few columns", function()
+      -- the spark's ping-pong used to be scaled to `width` directly (a step per physical column),
+      -- but `frame()` only ever sees `frame_count()` distinct indices before wrapping back to
+      -- frame 1 -- so on any window wider than ~frame_count() columns, the spark got stuck
+      -- sweeping the first handful of columns and never reached the rest of the row.
+      local width = 50
+      local min_col, max_col = width, 0
+      for idx = 1, celebrate.frame_count() do
+        local lines = celebrate.frame(idx, "MSG", width)
+        local laser_row = lines[#lines - 2]
+        local col = laser_row:find("%*")
+        min_col = math.min(min_col, col)
+        max_col = math.max(max_col, col)
+      end
+      assert.is_true(min_col <= 3)
+      assert.is_true(max_col >= width - 2)
+    end)
+
     it("never clips the message -- it's centered within width regardless of message length", function()
       local width = 40
       local short = celebrate.frame(1, "HI", width)
