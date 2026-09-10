@@ -154,7 +154,15 @@ function M.help()
   banner.show_help()
 end
 
+-- If a dashboard is already open (e.g. the watcher's fs_event re-fires because our own
+-- stage/resolve just changed the conflict count, not because something new actually appeared),
+-- refresh it in place instead of opening a second one stacked on top of the first.
 local function open_dashboard(files, show_banner)
+  if dashboard_handle and vim.api.nvim_win_is_valid(dashboard_handle.win) then
+    dashboard.refresh(dashboard_handle, files)
+    return
+  end
+
   dashboard_handle = dashboard.open(files, {
     show_banner = show_banner,
     on_open = open_file,

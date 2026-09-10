@@ -480,4 +480,78 @@ describe("albus-conflictius.init", function()
       assert.is_true(refresh_called)
     end)
   end)
+
+  describe("open_dashboard duplicate-window guard", function()
+    it("refreshes the existing dashboard instead of opening a second one while it's still open", function()
+      local open_calls, refresh_calls = 0, 0
+      local scratch_bufnr = vim.api.nvim_create_buf(false, true)
+      local scratch_win = vim.api.nvim_open_win(scratch_bufnr, false, {
+        relative = "editor",
+        width = 10,
+        height = 3,
+        row = 0,
+        col = 0,
+        style = "minimal",
+      })
+
+      albus._set_git({
+        conflicted_files = function()
+          return { "a.txt" }
+        end,
+      })
+      albus._set_dashboard({
+        open = function()
+          open_calls = open_calls + 1
+          return { win = scratch_win, bufnr = scratch_bufnr }
+        end,
+        refresh = function()
+          refresh_calls = refresh_calls + 1
+        end,
+        close = function() end,
+      })
+
+      albus.open()
+      albus.open()
+
+      assert.are.equal(1, open_calls)
+      assert.are.equal(1, refresh_calls)
+
+      if vim.api.nvim_win_is_valid(scratch_win) then
+        vim.api.nvim_win_close(scratch_win, true)
+      end
+    end)
+
+    it("opens a fresh dashboard if the previous one's window is no longer valid", function()
+      local open_calls = 0
+      local scratch_bufnr = vim.api.nvim_create_buf(false, true)
+      local scratch_win = vim.api.nvim_open_win(scratch_bufnr, false, {
+        relative = "editor",
+        width = 10,
+        height = 3,
+        row = 0,
+        col = 0,
+        style = "minimal",
+      })
+      vim.api.nvim_win_close(scratch_win, true)
+
+      albus._set_git({
+        conflicted_files = function()
+          return { "a.txt" }
+        end,
+      })
+      albus._set_dashboard({
+        open = function()
+          open_calls = open_calls + 1
+          return { win = scratch_win, bufnr = scratch_bufnr }
+        end,
+        refresh = function() end,
+        close = function() end,
+      })
+
+      albus.open()
+      albus.open()
+
+      assert.are.equal(2, open_calls)
+    end)
+  end)
 end)

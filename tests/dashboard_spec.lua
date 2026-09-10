@@ -120,8 +120,17 @@ describe("albus-conflictius.dashboard", function()
         done = true
       end)
 
-      local lines = file_lines(handle.bufnr)
-      assert.is_true(table.concat(lines, "\n"):find("CONFLICT", 1, true) ~= nil)
+      -- the celebration message is picked randomly from a pool where not every entry contains
+      -- the same word, so check membership in the actual pool rather than a fixed substring.
+      local content = table.concat(file_lines(handle.bufnr), "\n")
+      local celebrate = require("albus-conflictius.celebrate")
+      local matched = false
+      for _, msg in ipairs(celebrate.MESSAGES) do
+        if content:find(msg, 1, true) then
+          matched = true
+        end
+      end
+      assert.is_true(matched)
 
       vim.api.nvim_win_call(handle.win, function()
         vim.cmd("normal q")
