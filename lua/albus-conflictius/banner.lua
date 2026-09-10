@@ -53,7 +53,7 @@ function M.help_lines()
   table.insert(lines, "  <leader>cw  run the wand on this file (buffer, not disk)")
   table.insert(lines, "  <leader>cd  toggle the ours | result | theirs diff view")
   table.insert(lines, "  q           close diff panes, or the whole view")
-  table.insert(lines, "  :w          save -- auto-stages once no markers remain")
+  table.insert(lines, "  :w          save -- auto-stages and closes the tab once no markers remain")
   return lines
 end
 

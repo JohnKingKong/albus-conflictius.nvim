@@ -327,9 +327,10 @@ describe("albus-conflictius.resolve_view", function()
     vim.fn.confirm = original_confirm
   end)
 
-  it("calls on_resolved when the main buffer is saved with no remaining markers", function()
+  it("calls on_resolved and closes the tab when the main buffer is saved with no remaining markers", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n")
 
+    local tab_count_before = #vim.api.nvim_list_tabpages()
     local resolved_path
     local handle = resolve_view.open(tmpdir, "conflict.txt", {
       on_resolved = function(p)
@@ -343,7 +344,7 @@ describe("albus-conflictius.resolve_view", function()
     end)
 
     assert.are.equal("conflict.txt", resolved_path)
-
-    vim.cmd("tabclose!")
+    assert.is_false(vim.api.nvim_win_is_valid(handle.main_win))
+    assert.are.equal(tab_count_before, #vim.api.nvim_list_tabpages())
   end)
 end)

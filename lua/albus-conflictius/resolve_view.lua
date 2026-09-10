@@ -406,17 +406,22 @@ function M.open(cwd, path, opts)
     vim.log.levels.INFO
   )
 
-  if opts.on_resolved then
-    vim.api.nvim_create_autocmd("BufWritePost", {
-      buffer = main_bufnr,
-      callback = function()
-        local content = table.concat(vim.api.nvim_buf_get_lines(main_bufnr, 0, -1, false), "\n")
-        if not wand.has_conflict_markers(content) then
-          opts.on_resolved(path)
-        end
-      end,
-    })
-  end
+  -- Once a save leaves no markers, this file is done -- close the tab so focus naturally returns
+  -- to wherever you were before opening it (typically the dashboard), instead of leaving you
+  -- stranded in a now-finished view while the dashboard/celebration happen in a tab you can't see.
+  vim.api.nvim_create_autocmd("BufWritePost", {
+    buffer = main_bufnr,
+    callback = function()
+      local content = table.concat(vim.api.nvim_buf_get_lines(main_bufnr, 0, -1, false), "\n")
+      if wand.has_conflict_markers(content) then
+        return
+      end
+      if opts.on_resolved then
+        opts.on_resolved(path)
+      end
+      vim.cmd("tabclose")
+    end,
+  })
 
   return handle
 end

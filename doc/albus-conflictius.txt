@@ -49,7 +49,7 @@ cursor on the first conflict and enables these buffer-local keymaps:
     <leader>cw    run the wand on this file (acts on the buffer, not disk)
     <leader>cd    toggle an ours | result | theirs 3-pane diff view
     q             close the diff panes if open, else close the whole view
-    :w            save -- auto-stages once no markers remain
+    :w            save -- auto-stages and closes the tab once no markers remain
 
 <CR> works the same way everywhere: in the single-pane view it looks at
 which side of the hunk (ours or theirs text) the cursor's line falls in and
