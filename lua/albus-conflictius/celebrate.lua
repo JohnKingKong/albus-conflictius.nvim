@@ -1,7 +1,5 @@
 local M = {}
 
-local banner = require("albus-conflictius.banner")
-
 local LASER_WIDTH = 33
 
 -- `default = true` so these only apply when the colorscheme/user hasn't already defined them --
@@ -55,38 +53,6 @@ local function laser_row(spark_pos)
   return table.concat(row), { { col = spark_pos - 1, hl_group = "AlbusConflictiusLaser" } }
 end
 
--- Mirrors a line of ASCII art left-right, swapping bracket-like characters so they still point
--- the right way round (a naive character reversal would leave a "(" facing the wrong direction).
-local MIRROR_CHARS = {
-  ["("] = ")",
-  [")"] = "(",
-  ["/"] = "\\",
-  ["\\"] = "/",
-  ["<"] = ">",
-  [">"] = "<",
-  ["["] = "]",
-  ["]"] = "[",
-  ["{"] = "}",
-  ["}"] = "{",
-}
-
-local function mirror_line(line)
-  local chars = {}
-  for i = #line, 1, -1 do
-    local c = line:sub(i, i)
-    table.insert(chars, MIRROR_CHARS[c] or c)
-  end
-  return table.concat(chars)
-end
-
-local function mirror_art(lines)
-  local mirrored = {}
-  for _, line in ipairs(lines) do
-    table.insert(mirrored, mirror_line(line))
-  end
-  return mirrored
-end
-
 M.MESSAGES = {
   "ALAKAZAM! ALL CONFLICTS VANISHED!",
   "POOF! NOT A SINGLE CONFLICT LEFT!",
@@ -104,9 +70,10 @@ function M.frame_count()
 end
 
 -- Frames are generated, not hand-drawn: two sparkle rows cycle through a small set of scatter
--- patterns, a "laser" row's spark ping-pongs left-right across the width, the wizard mirror-flips
--- in place every other frame, and the border decoration alternates. `message` is fixed for the
--- whole playback (chosen once by `play`/`random_message`), not re-picked per frame.
+-- patterns, and a "laser" row's spark ping-pongs left-right across the width, around a message
+-- whose border alternates. `message` is fixed for the whole playback (chosen once by
+-- `play`/`random_message`), not re-picked per frame. No wizard art here -- this plays inside the
+-- dashboard's own window at its current size, not resized to fit anything bigger.
 -- Returns (lines, highlights) -- highlights is a list of {row, col, hl_group} (0-based, single
 -- character wide) plus border ranges, applied by `play` as extmarks.
 function M.frame(index, message)
@@ -132,13 +99,6 @@ function M.frame(index, message)
   push(row2, marks2)
   push("")
 
-  local art = (i % 2 == 0) and mirror_art(banner.art()) or banner.art()
-  for _, line in ipairs(art) do
-    push(line)
-  end
-
-  push("")
-
   local span = LASER_WIDTH - 2
   local cycle = 2 * span
   local pos = (i - 1) % cycle
@@ -160,18 +120,6 @@ function M.frame(index, message)
   return lines, highlights
 end
 
-local function frame_dimensions(message)
-  local width, height = 0, 0
-  for i = 1, M.frame_count() do
-    local frame = M.frame(i, message)
-    height = math.max(height, #frame)
-    for _, line in ipairs(frame) do
-      width = math.max(width, #line)
-    end
-  end
-  return width, height
-end
-
 local function apply_highlights(bufnr, highlights)
   vim.api.nvim_buf_clear_namespace(bufnr, NAMESPACE, 0, -1)
   for _, mark in ipairs(highlights) do
@@ -182,27 +130,18 @@ local function apply_highlights(bufnr, highlights)
   end
 end
 
--- Plays the animation in an existing buffer/window (resizing the window to fit), advancing one
--- frame every `interval_ms` for `total_frames` steps, then calls `on_done`. Any of <CR>/q/<Esc>
--- skips straight to `on_done`. Safe to call even if the window/buffer disappears mid-playback.
--- The celebration message is chosen once (random, or `opts.message` for tests) and stays fixed
--- for the whole run rather than flickering between choices frame to frame.
+-- Plays the animation in an existing buffer/window at whatever size it already is -- it never
+-- resizes the window, so there's nothing here that can leave a stale border/title artifact behind
+-- or throw on a too-small terminal. Advances one frame every `interval_ms` for `total_frames`
+-- steps, then calls `on_done`. Any of <CR>/q/<Esc> skips straight to `on_done`. If rendering a
+-- frame ever errors for any reason, that's treated as "done" rather than silently hanging forever
+-- with the caller never finding out. The celebration message is chosen once (random, or
+-- `opts.message` for tests) and stays fixed for the whole run.
 function M.play(bufnr, win, on_done, opts)
   opts = opts or {}
   local message = opts.message or M.random_message()
   local total_frames = opts.total_frames or (M.frame_count() * 5)
   local interval_ms = opts.interval_ms or 150
-
-  if vim.api.nvim_win_is_valid(win) then
-    local width, height = frame_dimensions(message)
-    vim.api.nvim_win_set_config(win, {
-      relative = "editor",
-      width = width,
-      height = height,
-      row = math.floor((vim.o.lines - height) / 2),
-      col = math.floor((vim.o.columns - width) / 2),
-    })
-  end
 
   local stopped = false
   local skip_keys = { "<CR>", "q", "<Esc>" }
@@ -218,9 +157,11 @@ function M.play(bufnr, win, on_done, opts)
     on_done()
   end
 
-  local skip_opts = { buffer = bufnr, silent = true, nowait = true }
-  for _, key in ipairs(skip_keys) do
-    vim.keymap.set("n", key, finish, skip_opts)
+  if vim.api.nvim_win_is_valid(win) then
+    local skip_opts = { buffer = bufnr, silent = true, nowait = true }
+    for _, key in ipairs(skip_keys) do
+      vim.keymap.set("n", key, finish, skip_opts)
+    end
   end
 
   local function step(index)
@@ -232,11 +173,17 @@ function M.play(bufnr, win, on_done, opts)
       return
     end
 
-    local lines, highlights = M.frame(index, message)
-    vim.bo[bufnr].modifiable = true
-    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
-    vim.bo[bufnr].modifiable = false
-    apply_highlights(bufnr, highlights)
+    local ok = pcall(function()
+      local lines, highlights = M.frame(index, message)
+      vim.bo[bufnr].modifiable = true
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+      vim.bo[bufnr].modifiable = false
+      apply_highlights(bufnr, highlights)
+    end)
+    if not ok then
+      finish()
+      return
+    end
 
     vim.defer_fn(function()
       step(index + 1)

@@ -3,7 +3,6 @@ describe("albus-conflictius.celebrate", function()
 
   before_each(function()
     package.loaded["albus-conflictius.celebrate"] = nil
-    package.loaded["albus-conflictius.banner"] = nil
     celebrate = require("albus-conflictius.celebrate")
   end)
 
@@ -19,13 +18,10 @@ describe("albus-conflictius.celebrate", function()
       assert.are.same(celebrate.frame(1), celebrate.frame(celebrate.frame_count() + 1))
     end)
 
-    it("includes the wizard art and the celebration message", function()
+    it("includes the celebration message", function()
       local lines = celebrate.frame(1)
       local joined = table.concat(lines, "\n")
       assert.is_true(joined:find("CONFLICT", 1, true) ~= nil)
-      local banner = require("albus-conflictius.banner")
-      local art_first_line = banner.art()[1]
-      assert.is_true(joined:find(art_first_line, 1, true) ~= nil)
     end)
 
     it("produces different content across at least some frames (it actually animates)", function()
@@ -38,20 +34,6 @@ describe("albus-conflictius.celebrate", function()
         end
       end
       assert.is_false(all_same)
-    end)
-
-    it("mirrors the wizard art on alternating frames", function()
-      local function wizard_lines(lines)
-        local out = {}
-        for i = 3, #lines - 3 do
-          table.insert(out, lines[i])
-        end
-        return out
-      end
-
-      local odd = wizard_lines(celebrate.frame(1))
-      local even = wizard_lines(celebrate.frame(2))
-      assert.are_not.same(odd, even)
     end)
 
     it("keeps a fixed message across frames instead of picking a new one each time", function()
@@ -125,13 +107,15 @@ describe("albus-conflictius.celebrate", function()
       vim.api.nvim_win_close(win, true)
     end)
 
-    it("resizes the window to fit the animation", function()
+    it("never resizes the window -- it plays at whatever size the window already is", function()
       local bufnr, win = open_scratch_win()
-      celebrate.play(bufnr, win, function() end, { total_frames = 1, interval_ms = 10000, message = "PINNED" })
+      local before = vim.api.nvim_win_get_config(win)
 
-      local config = vim.api.nvim_win_get_config(win)
-      local expected_height = #celebrate.frame(1, "PINNED")
-      assert.are.equal(expected_height, config.height)
+      celebrate.play(bufnr, win, function() end, { total_frames = 1, interval_ms = 10000 })
+
+      local after = vim.api.nvim_win_get_config(win)
+      assert.are.equal(before.width, after.width)
+      assert.are.equal(before.height, after.height)
 
       vim.api.nvim_win_close(win, true)
     end)
@@ -164,6 +148,27 @@ describe("albus-conflictius.celebrate", function()
         return done
       end)
 
+      assert.is_true(done)
+      if vim.api.nvim_win_is_valid(win) then
+        vim.api.nvim_win_close(win, true)
+      end
+    end)
+
+    it("still calls on_done if rendering a frame errors partway through", function()
+      local bufnr, win = open_scratch_win()
+      -- force a real rendering failure: wipe the buffer out from under play() so
+      -- nvim_buf_set_lines on the next step fails, without touching stopped/bufnr checks.
+      local real_set_lines = vim.api.nvim_buf_set_lines
+      vim.api.nvim_buf_set_lines = function()
+        error("simulated rendering failure")
+      end
+
+      local done = false
+      celebrate.play(bufnr, win, function()
+        done = true
+      end, { total_frames = 100, interval_ms = 1 })
+
+      vim.api.nvim_buf_set_lines = real_set_lines
       assert.is_true(done)
       if vim.api.nvim_win_is_valid(win) then
         vim.api.nvim_win_close(win, true)
