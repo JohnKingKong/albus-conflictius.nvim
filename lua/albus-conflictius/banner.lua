@@ -42,6 +42,15 @@ function M.help_lines()
   table.insert(lines, "  W     run the wand on every conflicted file")
   table.insert(lines, "  ?     show this help")
   table.insert(lines, "  q     close")
+  table.insert(lines, "")
+  table.insert(lines, "Resolve view keymaps (once a file is open):")
+  table.insert(lines, "  <leader>co  accept ours for the hunk under the cursor")
+  table.insert(lines, "  <leader>ct  accept theirs for the hunk under the cursor")
+  table.insert(lines, "  <leader>cb  accept both (ours then theirs)")
+  table.insert(lines, "  <leader>cn  jump to next conflict")
+  table.insert(lines, "  <leader>cp  jump to previous conflict")
+  table.insert(lines, "  <leader>cd  toggle the full base/ours/theirs diff view")
+  table.insert(lines, "  :w          save -- auto-stages once no markers remain")
   return lines
 end
 

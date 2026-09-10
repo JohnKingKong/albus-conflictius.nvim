@@ -6,7 +6,8 @@ CONTENTS                                          *albus-conflictius-contents*
     1. Introduction .......... |albus-conflictius-introduction|
     2. Setup ................. |albus-conflictius-setup|
     3. Commands .............. |albus-conflictius-commands|
-    4. Configuration ......... |albus-conflictius-configuration|
+    4. Resolve view keymaps .. |albus-conflictius-resolve-view|
+    5. Configuration ......... |albus-conflictius-configuration|
 
 ==============================================================================
 1. Introduction                               *albus-conflictius-introduction*
@@ -33,7 +34,21 @@ the Neovim equivalent of WebStorm's conflict resolution wand.
     Show the wizard art and a command/keymap reference.
 
 ==============================================================================
-4. Configuration                             *albus-conflictius-configuration*
+4. Resolve view keymaps                        *albus-conflictius-resolve-view*
+
+Opening a file with remaining conflicts (`<CR>` in the dashboard) drops the
+cursor on the first conflict and enables these buffer-local keymaps:
+
+    <leader>co    accept ours for the hunk under the cursor
+    <leader>ct    accept theirs for the hunk under the cursor
+    <leader>cb    accept both (ours then theirs)
+    <leader>cn    jump to the next conflict
+    <leader>cp    jump to the previous conflict
+    <leader>cd    toggle a full base/ours/theirs diff view alongside it
+    :w            save -- auto-stages once no markers remain
+
+==============================================================================
+5. Configuration                             *albus-conflictius-configuration*
 
 >lua
     require("albus-conflictius").setup({

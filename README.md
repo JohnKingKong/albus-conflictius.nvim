@@ -6,7 +6,7 @@ A merge-conflict manager for Neovim, with a "magic wand" that auto-resolves the 
 
 Resolving a git conflict usually means opening each file, scanning past the conflict markers where only one side actually changed anything, and manually picking that side over and over. WebStorm's merge tool has a "magic wand" that does this automatically, leaving only the conflicts that truly need a human. Neovim had no equivalent, and no way to notice a conflict exists unless you're already looking at the file.
 
-**`albus-conflictius.nvim` covers both.** It watches the repo itself for conflicts — from a merge, rebase, or cherry-pick, started from any tool (lazygit, a plain `git` command in another terminal, another plugin) — and pops up a dashboard the moment one appears. From there, the wand clears the easy hunks; anything left goes to a native 3-way diff.
+**`albus-conflictius.nvim` covers both.** It watches the repo itself for conflicts — from a merge, rebase, or cherry-pick, started from any tool (lazygit, a plain `git` command in another terminal, another plugin) — and pops up a dashboard the moment one appears. From there, the wand clears the easy hunks; anything left gets a guided accept-ours/accept-theirs view, not a wall of diff panes to decode.
 
 ---
 
@@ -16,8 +16,8 @@ Resolving a git conflict usually means opening each file, scanning past the conf
 2. The first time a new conflict set is detected, a floating dashboard pops up listing every conflicted file (with a small wizard art banner). Reopen it anytime with `:AlbusConflictius`.
 3. From the dashboard: `<CR>` opens a file, `w` runs the magic wand on the file under the cursor, `W` runs it across every conflicted file at once.
 4. The wand resolves each hunk where only one side actually changed relative to the merge base (or both sides converged on the same result) — it reads this straight from the conflict markers themselves, so it needs `merge.conflictstyle = diff3`, which the plugin sets on the repo automatically the first time `setup()` runs.
-5. Hunks where both sides genuinely changed different things are left alone. Opening that file from the dashboard drops you into Neovim's native diff mode with base/ours/theirs laid out as scratch buffers next to the real file — the same `:diffget`/`:diffput` workflow as vim-fugitive's conflict resolution.
-6. The moment a file has zero remaining conflict markers — whether the wand cleared it or you finished it by hand — it's automatically `git add`ed.
+5. Hunks where both sides genuinely changed different things are left alone. Opening that file from the dashboard (`<CR>`) drops the cursor on the first remaining conflict, with keymaps to act on the hunk under the cursor: `<leader>co` accept ours, `<leader>ct` accept theirs, `<leader>cb` accept both, `<leader>cn`/`<leader>cp` jump to the next/previous conflict. No diff panes to decode — you're just looking at your real file. For the harder cases, `<leader>cd` toggles a full base/ours/theirs diff view alongside it.
+6. The moment a file has zero remaining conflict markers — whether the wand cleared it or you finished it by hand — it's automatically `git add`ed on save.
 
 **This is not a git client.** Continuing the rebase/merge and committing is left to lazygit or the CLI, same as before.
 
@@ -80,7 +80,7 @@ Commands: `:AlbusConflictius` (open the dashboard now), `:AlbusConflictiusHelp` 
 
 **`lua/albus-conflictius/dashboard.lua`** — the floating conflicted-files window
 
-**`lua/albus-conflictius/resolve_view.lua`** — native 3-way diff view for files with remaining conflicts
+**`lua/albus-conflictius/resolve_view.lua`** — accept-ours/accept-theirs hunk view for files with remaining conflicts, with an optional full base/ours/theirs diff toggle
 
 **`lua/albus-conflictius/watcher.lua`** — autocmds + filesystem watcher with a dedup guard, driving auto-popup
 

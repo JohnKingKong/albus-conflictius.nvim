@@ -7,6 +7,12 @@ local function render(bufnr, files, show_banner)
   local offset = 0
   if show_banner then
     lines = banner.art()
+    local divider_width = 0
+    for _, line in ipairs(lines) do
+      divider_width = math.max(divider_width, #line)
+    end
+    table.insert(lines, "")
+    table.insert(lines, string.rep("-", divider_width))
     table.insert(lines, "")
     offset = #lines
   end
@@ -40,8 +46,18 @@ function M.open(files, opts)
   for _, path in ipairs(files) do
     width = math.max(width, #path + 2)
   end
+
+  local art_line_count = 0
+  if opts.show_banner then
+    local art = banner.art()
+    art_line_count = #art + 3 -- blank line + divider + blank line
+    for _, line in ipairs(art) do
+      width = math.max(width, #line + 2)
+    end
+  end
+
   width = math.min(width, math.floor(vim.o.columns * 0.8))
-  local height = math.min(math.max(#files, 1) + (opts.show_banner and 12 or 0), math.floor(vim.o.lines * 0.8))
+  local height = math.min(math.max(#files, 1) + art_line_count, math.floor(vim.o.lines * 0.8))
 
   local win = vim.api.nvim_open_win(bufnr, true, {
     relative = "editor",
@@ -52,7 +68,11 @@ function M.open(files, opts)
     style = "minimal",
     border = "rounded",
     title = " albus-conflictius: conflicted files ",
+    zindex = 300,
   })
+
+  vim.api.nvim_set_current_win(win)
+  vim.cmd("stopinsert")
 
   local handle = { win = win, bufnr = bufnr, files = files, offset = 0 }
   handle.offset = render(bufnr, files, opts.show_banner)

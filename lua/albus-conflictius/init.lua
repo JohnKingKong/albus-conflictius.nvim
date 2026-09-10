@@ -50,7 +50,34 @@ local function open_file(path)
   })
 end
 
-function M.wand_file(path)
+local function notify_wand_result(path, resolved_count, remaining_count)
+  if resolved_count == 0 and remaining_count == 0 then
+    vim.notify("albus-conflictius: " .. path .. " had no conflict markers", vim.log.levels.INFO)
+  elseif remaining_count == 0 then
+    vim.notify(
+      string.format(
+        "albus-conflictius: %s fully resolved (%d hunk%s)",
+        path,
+        resolved_count,
+        resolved_count == 1 and "" or "s"
+      ),
+      vim.log.levels.INFO
+    )
+  else
+    vim.notify(
+      string.format(
+        "albus-conflictius: %s — %d resolved, %d still need manual resolution",
+        path,
+        resolved_count,
+        remaining_count
+      ),
+      vim.log.levels.WARN
+    )
+  end
+end
+
+function M.wand_file(path, wand_opts)
+  wand_opts = wand_opts or {}
   local full_path = cwd() .. "/" .. path
   local file = io.open(full_path, "r")
   if not file then
@@ -81,6 +108,10 @@ function M.wand_file(path)
     git.stage(cwd(), path)
   end
 
+  if not wand_opts.silent then
+    notify_wand_result(path, resolved_count, remaining_count)
+  end
+
   refresh_dashboard()
 
   return { resolved_count = resolved_count, remaining_count = remaining_count }
@@ -88,11 +119,25 @@ end
 
 function M.wand_all()
   local total = { resolved_count = 0, remaining_count = 0 }
+  local file_count = 0
   for _, path in ipairs(git.conflicted_files(cwd())) do
-    local summary = M.wand_file(path)
+    local summary = M.wand_file(path, { silent = true })
     total.resolved_count = total.resolved_count + summary.resolved_count
     total.remaining_count = total.remaining_count + summary.remaining_count
+    file_count = file_count + 1
   end
+
+  vim.notify(
+    string.format(
+      "albus-conflictius: wanded %d file%s — %d resolved, %d still need manual resolution",
+      file_count,
+      file_count == 1 and "" or "s",
+      total.resolved_count,
+      total.remaining_count
+    ),
+    vim.log.levels.INFO
+  )
+
   return total
 end
 
