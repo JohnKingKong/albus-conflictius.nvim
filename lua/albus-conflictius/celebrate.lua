@@ -4,9 +4,11 @@ local banner = require("albus-conflictius.banner")
 
 local LASER_WIDTH = 33
 
--- `default = true` so these only apply when the colorscheme/user hasn't already defined them --
--- unlike the ours/theirs hunk highlights, these are meant to be vividly colorful regardless of
--- colorscheme (it's fireworks, not a serious UI element), so they're explicit hex, not Diff* links.
+-- These are meant to be vividly colorful regardless of colorscheme (it's fireworks, not a
+-- serious UI element), so they're explicit hex, not Diff*/colorscheme-derived links. `:colorscheme`
+-- typically clears ALL highlight groups before applying its own, which would silently wipe these
+-- out if we only ever set them once at module load -- so they're (re)applied on every ColorScheme
+-- event too, not just at startup.
 local SPARK_HL = {
   "AlbusConflictiusSpark1",
   "AlbusConflictiusSpark2",
@@ -15,14 +17,21 @@ local SPARK_HL = {
   "AlbusConflictiusSpark5",
   "AlbusConflictiusSpark6",
 }
-vim.api.nvim_set_hl(0, "AlbusConflictiusSpark1", { default = true, fg = "#ff5f5f" })
-vim.api.nvim_set_hl(0, "AlbusConflictiusSpark2", { default = true, fg = "#ffd75f" })
-vim.api.nvim_set_hl(0, "AlbusConflictiusSpark3", { default = true, fg = "#5fd7ff" })
-vim.api.nvim_set_hl(0, "AlbusConflictiusSpark4", { default = true, fg = "#ff5fff" })
-vim.api.nvim_set_hl(0, "AlbusConflictiusSpark5", { default = true, fg = "#5fff5f" })
-vim.api.nvim_set_hl(0, "AlbusConflictiusSpark6", { default = true, fg = "#af87ff" })
-vim.api.nvim_set_hl(0, "AlbusConflictiusLaser", { default = true, fg = "#ff875f" })
-vim.api.nvim_set_hl(0, "AlbusConflictiusBorder", { default = true, fg = "#d7af5f" })
+local SPARK_COLORS = { "#ff5f5f", "#ffd75f", "#5fd7ff", "#ff5fff", "#5fff5f", "#af87ff" }
+
+local function apply_colors()
+  for idx, group in ipairs(SPARK_HL) do
+    vim.api.nvim_set_hl(0, group, { fg = SPARK_COLORS[idx] })
+  end
+  vim.api.nvim_set_hl(0, "AlbusConflictiusBorder", { fg = "#d7af5f" })
+end
+
+apply_colors()
+vim.api.nvim_create_autocmd("ColorScheme", {
+  group = vim.api.nvim_create_augroup("albus-conflictius-celebrate-colors", { clear = true }),
+  callback = apply_colors,
+  desc = "albus-conflictius: re-apply celebration colors after a colorscheme change clears them",
+})
 
 local NAMESPACE = vim.api.nvim_create_namespace("albus-conflictius-celebrate")
 
@@ -70,14 +79,32 @@ local function sparkle_row(positions)
   return pad .. table.concat(row), marks
 end
 
-local function laser_row(spark_pos)
+-- The moving spark cycles through the same rainbow palette as the sparkle rows (keyed by frame
+-- index) instead of a single fixed color, so it visibly flashes different colors as it sweeps.
+local function laser_row(spark_pos, color_index)
   local row = {}
   for i = 1, LASER_WIDTH do
     row[i] = (i == 1 or i == LASER_WIDTH) and "|" or "-"
   end
   row[spark_pos] = "*"
   local pad = center_pad(LASER_WIDTH)
-  return pad .. table.concat(row), { { col = #pad + spark_pos - 1, hl_group = "AlbusConflictiusLaser" } }
+  local hl_group = SPARK_HL[((color_index - 1) % #SPARK_HL) + 1]
+  return pad .. table.concat(row), { { col = #pad + spark_pos - 1, hl_group = hl_group } }
+end
+
+-- One mark per non-space character, cycling through the rainbow palette -- a proper multicolor
+-- message instead of a single flat color.
+local function rainbow_marks(text, start_col)
+  local marks = {}
+  for idx = 1, #text do
+    if text:sub(idx, idx) ~= " " then
+      table.insert(marks, {
+        col = start_col + idx - 1,
+        hl_group = SPARK_HL[((idx - 1) % #SPARK_HL) + 1],
+      })
+    end
+  end
+  return marks
 end
 
 M.MESSAGES = {
@@ -97,11 +124,11 @@ function M.frame_count()
 end
 
 -- Frames are generated, not hand-drawn: a dense sparkle row up top and a lighter one below it
--- cycle through scatter patterns, and a "laser" row's spark ping-pongs left-right, around a
--- message whose border alternates. Everything narrower than the (static) wizard art is centered
--- against it. `message` is fixed for the whole playback (chosen once by `play`/`random_message`),
--- not re-picked per frame. This plays inside the dashboard's own window at its current size,
--- never resized to fit anything.
+-- cycle through scatter patterns, and a "laser" row's spark ping-pongs left-right while flashing
+-- through the rainbow palette, around a message whose text is itself multicolor letter-by-letter.
+-- Everything narrower than the (static) wizard art is centered against it. `message` is fixed for
+-- the whole playback (chosen once by `play`/`random_message`), not re-picked per frame. This plays
+-- inside the dashboard's own window at its current size, never resized to fit anything.
 -- Returns (lines, highlights) -- highlights is a list of {row, col, hl_group} (0-based, single
 -- character wide) plus border ranges, applied by `play` as extmarks.
 function M.frame(index, message)
@@ -139,18 +166,23 @@ function M.frame(index, message)
   if pos >= span then
     pos = cycle - pos
   end
-  local laser_line, laser_marks = laser_row(pos + 2)
+  local laser_line, laser_marks = laser_row(pos + 2, i)
   push(laser_line, laser_marks)
   push("")
 
   local border = (i % 2 == 0) and "*~*~*~*~*~*" or "~*~*~*~*~*~"
   local message_line = border .. "  " .. message .. "  " .. border
   local pad = center_pad(#message_line)
-  local right_border_start = #pad + #border + 2 + #message + 2
-  push(pad .. message_line, {
-    { col = #pad, hl_group = "AlbusConflictiusBorder", col_end = #pad + #border },
-    { col = right_border_start, hl_group = "AlbusConflictiusBorder", col_end = right_border_start + #border },
-  })
+  local message_start = #pad + #border + 2
+  local right_border_start = message_start + #message + 2
+
+  local message_marks = rainbow_marks(message, message_start)
+  table.insert(message_marks, { col = #pad, hl_group = "AlbusConflictiusBorder", col_end = #pad + #border })
+  table.insert(
+    message_marks,
+    { col = right_border_start, hl_group = "AlbusConflictiusBorder", col_end = right_border_start + #border }
+  )
+  push(pad .. message_line, message_marks)
 
   return lines, highlights
 end
@@ -165,6 +197,31 @@ local function apply_highlights(bufnr, highlights)
   end
 end
 
+-- Vertically centers `lines`/`highlights` within `window_height` by padding blank lines above
+-- (and, if there's room, below) rather than leaving the animation stuck at the top of a taller
+-- window. Never resizes anything -- purely a padding calculation over what's already there.
+local function center_vertically(lines, highlights, window_height)
+  local vpad = math.max(0, math.floor((window_height - #lines) / 2))
+  if vpad == 0 then
+    return lines, highlights
+  end
+
+  local padded = {}
+  for _ = 1, vpad do
+    table.insert(padded, "")
+  end
+  for _, line in ipairs(lines) do
+    table.insert(padded, line)
+  end
+
+  local shifted = {}
+  for _, h in ipairs(highlights) do
+    table.insert(shifted, { row = h.row + vpad, col = h.col, col_end = h.col_end, hl_group = h.hl_group })
+  end
+
+  return padded, shifted
+end
+
 -- Plays the animation in an existing buffer/window at whatever size it already is -- it never
 -- resizes the window, so there's nothing here that can leave a stale border/title artifact behind
 -- or throw on a too-small terminal. Advances one frame every `interval_ms` for `total_frames`
@@ -177,6 +234,7 @@ function M.play(bufnr, win, on_done, opts)
   local message = opts.message or M.random_message()
   local total_frames = opts.total_frames or (M.frame_count() * 5)
   local interval_ms = opts.interval_ms or 150
+  local window_height = vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_height(win) or 0
 
   local stopped = false
   local skip_keys = { "<CR>", "q", "<Esc>" }
@@ -210,6 +268,7 @@ function M.play(bufnr, win, on_done, opts)
 
     local ok = pcall(function()
       local lines, highlights = M.frame(index, message)
+      lines, highlights = center_vertically(lines, highlights, window_height)
       vim.bo[bufnr].modifiable = true
       vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
       vim.bo[bufnr].modifiable = false

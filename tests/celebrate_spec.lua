@@ -63,7 +63,8 @@ describe("albus-conflictius.celebrate", function()
         groups[h.hl_group] = true
       end
 
-      assert.is_true(groups["AlbusConflictiusLaser"])
+      -- the laser spark now flashes through the same rainbow palette as the sparkle rows,
+      -- rather than a single dedicated color -- just confirm at least one spark color is used.
       assert.is_true(groups["AlbusConflictiusBorder"])
 
       local has_spark = false
@@ -80,6 +81,23 @@ describe("albus-conflictius.celebrate", function()
         end
       end
       assert.is_true(has_spark)
+    end)
+
+    it("colors the message text letter-by-letter with multiple distinct colors, not one flat color", function()
+      local lines, highlights = celebrate.frame(1, "A LONGER TEST MESSAGE")
+      local message_row = #lines - 1 -- 0-based row index of the last line (the message line)
+
+      local colors_on_message_line = {}
+      for _, h in ipairs(highlights) do
+        if h.row == message_row and h.hl_group ~= "AlbusConflictiusBorder" then
+          colors_on_message_line[h.hl_group] = true
+        end
+      end
+      local count = 0
+      for _ in pairs(colors_on_message_line) do
+        count = count + 1
+      end
+      assert.is_true(count >= 3)
     end)
 
     it("uses several distinct spark colors across a frame's sparkle rows, not just one", function()
@@ -150,6 +168,37 @@ describe("albus-conflictius.celebrate", function()
       assert.are.same(celebrate.frame(1, "PINNED"), lines)
 
       vim.api.nvim_win_close(win, true)
+    end)
+
+    it("vertically centers the frame with blank padding when the window is taller than the content", function()
+      local frame_lines = celebrate.frame(1, "PINNED")
+      local extra = 10
+      -- headless Neovim defaults to a 24-line "screen", too short to actually fit
+      -- #frame_lines + extra -- give it enough room so the window isn't silently clamped.
+      local original_lines = vim.o.lines
+      vim.o.lines = #frame_lines + extra + 10
+
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      local win = vim.api.nvim_open_win(bufnr, true, {
+        relative = "editor",
+        width = 60,
+        height = #frame_lines + extra,
+        row = 0,
+        col = 0,
+        style = "minimal",
+      })
+
+      celebrate.play(bufnr, win, function() end, { total_frames = 1, interval_ms = 10000, message = "PINNED" })
+
+      local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      local expected_pad = math.floor(extra / 2)
+      for i = 1, expected_pad do
+        assert.are.equal("", lines[i])
+      end
+      assert.are.equal(frame_lines[1], lines[expected_pad + 1])
+
+      vim.api.nvim_win_close(win, true)
+      vim.o.lines = original_lines
     end)
 
     it("never resizes the window -- it plays at whatever size the window already is", function()
