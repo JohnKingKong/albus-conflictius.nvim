@@ -12,38 +12,62 @@ local SPARK_HL = {
   "AlbusConflictiusSpark2",
   "AlbusConflictiusSpark3",
   "AlbusConflictiusSpark4",
+  "AlbusConflictiusSpark5",
+  "AlbusConflictiusSpark6",
 }
 vim.api.nvim_set_hl(0, "AlbusConflictiusSpark1", { default = true, fg = "#ff5f5f" })
 vim.api.nvim_set_hl(0, "AlbusConflictiusSpark2", { default = true, fg = "#ffd75f" })
 vim.api.nvim_set_hl(0, "AlbusConflictiusSpark3", { default = true, fg = "#5fd7ff" })
 vim.api.nvim_set_hl(0, "AlbusConflictiusSpark4", { default = true, fg = "#ff5fff" })
+vim.api.nvim_set_hl(0, "AlbusConflictiusSpark5", { default = true, fg = "#5fff5f" })
+vim.api.nvim_set_hl(0, "AlbusConflictiusSpark6", { default = true, fg = "#af87ff" })
 vim.api.nvim_set_hl(0, "AlbusConflictiusLaser", { default = true, fg = "#ff875f" })
 vim.api.nvim_set_hl(0, "AlbusConflictiusBorder", { default = true, fg = "#d7af5f" })
 
 local NAMESPACE = vim.api.nvim_create_namespace("albus-conflictius-celebrate")
 
-local SPARKLE_PATTERNS = {
+-- The top row is deliberately denser than the bottom one -- a "bigger" burst up high, thinning
+-- out below it, rather than two identical rows.
+local SPARKLE_PATTERNS_TOP = {
+  { 3, 6, 9, 12, 15, 18, 21, 24, 27, 30 },
+  { 2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32 },
+  { 4, 7, 10, 13, 16, 19, 22, 25, 28, 31 },
+  { 2, 4, 8, 11, 15, 18, 21, 24, 27, 30, 32 },
+}
+local SPARKLE_PATTERNS_BOTTOM = {
   { 5, 14, 24 },
   { 2, 11, 20, 29 },
   { 8, 17, 27 },
   { 4, 13, 22, 31 },
 }
-local SPARK_CHARS = { "*", ".", "'", "+" }
+local SPARK_CHARS = { "*", ".", "'", "+", "x", "o" }
 
--- Returns the row text plus a list of {col (0-based), hl_group} marks for its special characters,
--- computed at construction time rather than by re-scanning the rendered text afterward.
+local WIZARD_ART = banner.art()
+local WIZARD_WIDTH = 0
+for _, line in ipairs(WIZARD_ART) do
+  WIZARD_WIDTH = math.max(WIZARD_WIDTH, #line)
+end
+
+local function center_pad(width)
+  return string.rep(" ", math.max(0, math.floor((WIZARD_WIDTH - width) / 2)))
+end
+
+-- Returns the row text (centered against the wizard's width) plus a list of {col (0-based),
+-- hl_group} marks for its special characters, computed at construction time rather than by
+-- re-scanning the rendered text afterward.
 local function sparkle_row(positions)
   local row = {}
   for i = 1, LASER_WIDTH do
     row[i] = " "
   end
   local marks = {}
+  local pad = center_pad(LASER_WIDTH)
   for i, pos in ipairs(positions) do
     local char_index = ((i - 1) % #SPARK_CHARS) + 1
     row[pos] = SPARK_CHARS[char_index]
-    table.insert(marks, { col = pos - 1, hl_group = SPARK_HL[char_index] })
+    table.insert(marks, { col = #pad + pos - 1, hl_group = SPARK_HL[char_index] })
   end
-  return table.concat(row), marks
+  return pad .. table.concat(row), marks
 end
 
 local function laser_row(spark_pos)
@@ -52,7 +76,8 @@ local function laser_row(spark_pos)
     row[i] = (i == 1 or i == LASER_WIDTH) and "|" or "-"
   end
   row[spark_pos] = "*"
-  return table.concat(row), { { col = spark_pos - 1, hl_group = "AlbusConflictiusLaser" } }
+  local pad = center_pad(LASER_WIDTH)
+  return pad .. table.concat(row), { { col = #pad + spark_pos - 1, hl_group = "AlbusConflictiusLaser" } }
 end
 
 M.MESSAGES = {
@@ -71,12 +96,12 @@ function M.frame_count()
   return 8
 end
 
--- Frames are generated, not hand-drawn: two sparkle rows cycle through a small set of scatter
--- patterns, and a "laser" row's spark ping-pongs left-right across the width, around a message
--- whose border alternates. `message` is fixed for the whole playback (chosen once by
--- `play`/`random_message`), not re-picked per frame. The wizard art sits in the middle, static --
--- it doesn't move or mirror, it's just the recognizable anchor for the fireworks around it. This
--- plays inside the dashboard's own window at its current size, never resized to fit anything.
+-- Frames are generated, not hand-drawn: a dense sparkle row up top and a lighter one below it
+-- cycle through scatter patterns, and a "laser" row's spark ping-pongs left-right, around a
+-- message whose border alternates. Everything narrower than the (static) wizard art is centered
+-- against it. `message` is fixed for the whole playback (chosen once by `play`/`random_message`),
+-- not re-picked per frame. This plays inside the dashboard's own window at its current size,
+-- never resized to fit anything.
 -- Returns (lines, highlights) -- highlights is a list of {row, col, hl_group} (0-based, single
 -- character wide) plus border ranges, applied by `play` as extmarks.
 function M.frame(index, message)
@@ -96,13 +121,13 @@ function M.frame(index, message)
     end
   end
 
-  local row1, marks1 = sparkle_row(SPARKLE_PATTERNS[((i - 1) % #SPARKLE_PATTERNS) + 1])
-  push(row1, marks1)
-  local row2, marks2 = sparkle_row(SPARKLE_PATTERNS[(i % #SPARKLE_PATTERNS) + 1])
-  push(row2, marks2)
+  local top, top_marks = sparkle_row(SPARKLE_PATTERNS_TOP[((i - 1) % #SPARKLE_PATTERNS_TOP) + 1])
+  push(top, top_marks)
+  local bottom, bottom_marks = sparkle_row(SPARKLE_PATTERNS_BOTTOM[(i % #SPARKLE_PATTERNS_BOTTOM) + 1])
+  push(bottom, bottom_marks)
   push("")
 
-  for _, line in ipairs(banner.art()) do
+  for _, line in ipairs(WIZARD_ART) do
     push(line)
   end
 
@@ -120,9 +145,10 @@ function M.frame(index, message)
 
   local border = (i % 2 == 0) and "*~*~*~*~*~*" or "~*~*~*~*~*~"
   local message_line = border .. "  " .. message .. "  " .. border
-  local right_border_start = #border + 2 + #message + 2
-  push(message_line, {
-    { col = 0, hl_group = "AlbusConflictiusBorder", col_end = #border },
+  local pad = center_pad(#message_line)
+  local right_border_start = #pad + #border + 2 + #message + 2
+  push(pad .. message_line, {
+    { col = #pad, hl_group = "AlbusConflictiusBorder", col_end = #pad + #border },
     { col = right_border_start, hl_group = "AlbusConflictiusBorder", col_end = right_border_start + #border },
   })
 

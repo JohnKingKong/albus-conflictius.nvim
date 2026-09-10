@@ -72,12 +72,44 @@ describe("albus-conflictius.celebrate", function()
         "AlbusConflictiusSpark2",
         "AlbusConflictiusSpark3",
         "AlbusConflictiusSpark4",
+        "AlbusConflictiusSpark5",
+        "AlbusConflictiusSpark6",
       }) do
         if groups[name] then
           has_spark = true
         end
       end
       assert.is_true(has_spark)
+    end)
+
+    it("uses several distinct spark colors across a frame's sparkle rows, not just one", function()
+      local _, highlights = celebrate.frame(1, "MSG")
+      local spark_groups = {}
+      for _, h in ipairs(highlights) do
+        if h.hl_group:match("^AlbusConflictiusSpark%d$") then
+          spark_groups[h.hl_group] = true
+        end
+      end
+      local count = 0
+      for _ in pairs(spark_groups) do
+        count = count + 1
+      end
+      assert.is_true(count >= 3)
+    end)
+
+    it("centers narrower rows (sparkles, laser, message) against the wizard's width", function()
+      local banner = require("albus-conflictius.banner")
+      local wizard_width = 0
+      for _, line in ipairs(banner.art()) do
+        wizard_width = math.max(wizard_width, #line)
+      end
+
+      local lines = celebrate.frame(1, "MSG")
+      -- line 1 is the dense top sparkle row -- it should be roughly centered, i.e. have leading
+      -- padding rather than starting flush at column 0 (which is what "left-aligned" looked like).
+      local leading_spaces = #(lines[1]:match("^( *)"))
+      assert.is_true(leading_spaces > 0)
+      assert.is_true(#lines[1] <= wizard_width)
     end)
   end)
 
