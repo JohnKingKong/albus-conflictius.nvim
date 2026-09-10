@@ -44,8 +44,15 @@ cursor on the first conflict and enables these buffer-local keymaps:
     <leader>cb    accept both (ours then theirs)
     <leader>cn    jump to the next conflict
     <leader>cp    jump to the previous conflict
+    <leader>cw    run the wand on this file (acts on the buffer, not disk)
     <leader>cd    toggle a full base/ours/theirs diff view alongside it
+    q             close the diff panes if open, else close the whole view
     :w            save -- auto-stages once no markers remain
+
+The "ours" and "theirs" side of each remaining hunk are background
+highlighted (|hl-DiffChange| and |hl-DiffAdd| by default) so they're
+visually distinct without reading the marker text. Override
+`AlbusConflictiusOurs`/`AlbusConflictiusTheirs` to customize.
 
 ==============================================================================
 5. Configuration                             *albus-conflictius-configuration*

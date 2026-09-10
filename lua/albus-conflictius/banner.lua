@@ -49,7 +49,9 @@ function M.help_lines()
   table.insert(lines, "  <leader>cb  accept both (ours then theirs)")
   table.insert(lines, "  <leader>cn  jump to next conflict")
   table.insert(lines, "  <leader>cp  jump to previous conflict")
+  table.insert(lines, "  <leader>cw  run the wand on this file (buffer, not disk)")
   table.insert(lines, "  <leader>cd  toggle the full base/ours/theirs diff view")
+  table.insert(lines, "  q           close diff panes, or the whole view")
   table.insert(lines, "  :w          save -- auto-stages once no markers remain")
   return lines
 end
