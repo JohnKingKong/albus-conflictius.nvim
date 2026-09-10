@@ -14,16 +14,22 @@ local function current_hunks(bufnr)
   return wand.parse_hunks(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false))
 end
 
+-- Ours/theirs are always immediately after the opening `<<<<<<<` and immediately before the
+-- closing `>>>>>>>` respectively, regardless of whether a diff3 base is present in between.
+local function hunk_side_ranges(hunk)
+  local ours_start = hunk.start_idx + 1
+  local ours_end = ours_start + #hunk.ours - 1
+  local theirs_end = hunk.end_idx - 1
+  local theirs_start = theirs_end - #hunk.theirs + 1
+  return ours_start, ours_end, theirs_start, theirs_end
+end
+
 -- Background-highlights the "ours" and "theirs" sides of every remaining hunk so they're visually
--- distinct at a glance. Ours/theirs are always immediately after the opening `<<<<<<<` and
--- immediately before the closing `>>>>>>>` respectively, regardless of a diff3 base in between.
+-- distinct at a glance.
 local function highlight_hunks(bufnr)
   vim.api.nvim_buf_clear_namespace(bufnr, NAMESPACE, 0, -1)
   for _, hunk in ipairs(current_hunks(bufnr)) do
-    local ours_start = hunk.start_idx + 1
-    local ours_end = ours_start + #hunk.ours - 1
-    local theirs_end = hunk.end_idx - 1
-    local theirs_start = theirs_end - #hunk.theirs + 1
+    local ours_start, ours_end, theirs_start, theirs_end = hunk_side_ranges(hunk)
 
     for line = ours_start, ours_end do
       vim.api.nvim_buf_set_extmark(bufnr, NAMESPACE, line - 1, 0, {
@@ -190,6 +196,30 @@ local function accept_hunk(handle, choice)
   end
 end
 
+-- Same "accept whichever side the cursor is literally on" behaviour as the 3-pane view's <CR>,
+-- but for the single result pane: the hunk's ours/theirs text is right there in the buffer, so the
+-- cursor's line alone (not which pane it's in) tells us which side to accept.
+local function accept_at_cursor(handle)
+  local cursor_line = vim.api.nvim_win_get_cursor(handle.main_win)[1]
+  for index, hunk in ipairs(current_hunks(handle.main_bufnr)) do
+    if cursor_line >= hunk.start_idx and cursor_line <= hunk.end_idx then
+      local ours_start, ours_end, theirs_start, theirs_end = hunk_side_ranges(hunk)
+      if cursor_line >= ours_start and cursor_line <= ours_end then
+        accept_hunk_index(handle, index, "ours")
+      elseif cursor_line >= theirs_start and cursor_line <= theirs_end then
+        accept_hunk_index(handle, index, "theirs")
+      else
+        vim.notify(
+          "albus-conflictius: cursor is on a marker line -- move onto the ours or theirs text to accept a side",
+          vim.log.levels.WARN
+        )
+      end
+      return
+    end
+  end
+  vim.notify("albus-conflictius: cursor is not inside a conflict hunk", vim.log.levels.WARN)
+end
+
 -- Accepts the hunk under the cursor in a side pane (ours or theirs), determined purely by which
 -- pane the cursor is in -- no separate "which side" choice needed.
 local function accept_from_side(handle, side)
@@ -325,6 +355,9 @@ function M.open(cwd, path, opts)
   }
 
   local keymap_opts = { buffer = main_bufnr, silent = true }
+  vim.keymap.set("n", "<CR>", function()
+    accept_at_cursor(handle)
+  end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept whichever side the cursor is on" }))
   vim.keymap.set("n", "<leader>co", function()
     accept_hunk(handle, "ours")
   end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept ours" }))
@@ -368,8 +401,8 @@ function M.open(cwd, path, opts)
   vim.notify(
     "albus-conflictius: resolving "
       .. path
-      .. " -- <leader>co/ct/cb accept ours/theirs/both, <leader>cn/cp next/prev, "
-      .. "<leader>cw wand this file, <leader>cd ours|result|theirs view, q close",
+      .. " -- <CR> accept side under cursor, <leader>co/ct/cb accept ours/theirs/both, "
+      .. "<leader>cn/cp next/prev, <leader>cw wand this file, <leader>cd ours|result|theirs view, q close",
     vim.log.levels.INFO
   )
 

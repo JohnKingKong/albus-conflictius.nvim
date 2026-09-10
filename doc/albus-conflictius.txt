@@ -39,6 +39,7 @@ the Neovim equivalent of WebStorm's conflict resolution wand.
 Opening a file with remaining conflicts (`<CR>` in the dashboard) drops the
 cursor on the first conflict and enables these buffer-local keymaps:
 
+    <CR>          accept whichever side (ours/theirs) the cursor is on
     <leader>co    accept ours for the hunk under the cursor
     <leader>ct    accept theirs for the hunk under the cursor
     <leader>cb    accept both (ours then theirs)
@@ -49,11 +50,14 @@ cursor on the first conflict and enables these buffer-local keymaps:
     q             close the diff panes if open, else close the whole view
     :w            save -- auto-stages once no markers remain
 
+<CR> works the same way everywhere: in the single-pane view it looks at
+which side of the hunk (ours or theirs text) the cursor's line falls in and
+accepts that side; in the 3-pane view it's simply whichever pane you're in.
+On a marker line itself, it warns instead of guessing.
+
 `<leader>cd` opens two extra read-only panes around the real file: "ours" on
 the left, "theirs" on the right, each showing what the file would look like
-if every remaining hunk were resolved to that side. Pressing <CR> in either
-pane accepts that side for the hunk under the cursor there -- no need to
-remember which of <leader>co/<leader>ct applies, the pane you're in decides.
+if every remaining hunk were resolved to that side.
 `q` closes the diff panes first (non-destructive, <leader>cd reopens them);
 pressed again it closes the whole view, prompting for confirmation only if
 conflicts still remain.

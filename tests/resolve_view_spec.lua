@@ -43,6 +43,42 @@ describe("albus-conflictius.resolve_view", function()
     vim.cmd("tabclose!")
   end)
 
+  it("<CR> accepts ours when the cursor is on the ours side of the hunk", function()
+    write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
+
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
+    vim.api.nvim_win_set_cursor(handle.main_win, { 2, 0 }) -- "ours line"
+    feed(handle.main_win, "<CR>")
+
+    assert.are.equal("ours line", buf_content(handle.main_bufnr))
+
+    vim.cmd("tabclose!")
+  end)
+
+  it("<CR> accepts theirs when the cursor is on the theirs side of the hunk", function()
+    write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
+
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
+    vim.api.nvim_win_set_cursor(handle.main_win, { 4, 0 }) -- "theirs line"
+    feed(handle.main_win, "<CR>")
+
+    assert.are.equal("theirs line", buf_content(handle.main_bufnr))
+
+    vim.cmd("tabclose!")
+  end)
+
+  it("<CR> on a marker line warns instead of guessing a side", function()
+    write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
+
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
+    vim.api.nvim_win_set_cursor(handle.main_win, { 3, 0 }) -- "=======" separator line
+    feed(handle.main_win, "<CR>")
+
+    assert.is_true(buf_content(handle.main_bufnr):find("<<<<<<<", 1, true) ~= nil)
+
+    vim.cmd("tabclose!")
+  end)
+
   it("<leader>co accepts ours for the hunk under the cursor", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
 
