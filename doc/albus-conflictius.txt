@@ -1,0 +1,45 @@
+*albus-conflictius.txt*    A merge conflict manager with a magic wand
+
+==============================================================================
+CONTENTS                                          *albus-conflictius-contents*
+
+    1. Introduction .......... |albus-conflictius-introduction|
+    2. Setup ................. |albus-conflictius-setup|
+    3. Commands .............. |albus-conflictius-commands|
+    4. Configuration ......... |albus-conflictius-configuration|
+
+==============================================================================
+1. Introduction                               *albus-conflictius-introduction*
+
+albus-conflictius.nvim watches your repo for git merge/rebase/cherry-pick
+conflicts from any tool, pops up a dashboard of conflicted files, and offers
+a magic wand that auto-resolves hunks where only one side actually changed —
+the Neovim equivalent of WebStorm's conflict resolution wand.
+
+==============================================================================
+2. Setup                                             *albus-conflictius-setup*
+
+>lua
+    require("albus-conflictius").setup({})
+<
+
+==============================================================================
+3. Commands                                       *albus-conflictius-commands*
+
+:AlbusConflictius                                       *:AlbusConflictius*
+    Open the conflict dashboard for the current repo now.
+
+:AlbusConflictiusHelp                               *:AlbusConflictiusHelp*
+    Show the wizard art and a command/keymap reference.
+
+==============================================================================
+4. Configuration                             *albus-conflictius-configuration*
+
+>lua
+    require("albus-conflictius").setup({
+      banner = true,
+      auto_stage = true,
+    })
+<
+
+ vim:tw=78:ts=8:ft=help:norl:
