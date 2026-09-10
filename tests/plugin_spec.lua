@@ -1,0 +1,21 @@
+describe("plugin/albus-conflictius.lua", function()
+  before_each(function()
+    vim.g.loaded_albus_conflictius = nil
+    pcall(vim.api.nvim_del_user_command, "AlbusConflictius")
+    pcall(vim.api.nvim_del_user_command, "AlbusConflictiusHelp")
+  end)
+
+  it("registers :AlbusConflictius and :AlbusConflictiusHelp", function()
+    dofile("plugin/albus-conflictius.lua")
+    local commands = vim.api.nvim_get_commands({})
+    assert.is_not_nil(commands["AlbusConflictius"])
+    assert.is_not_nil(commands["AlbusConflictiusHelp"])
+  end)
+
+  it("only registers once when sourced twice", function()
+    dofile("plugin/albus-conflictius.lua")
+    dofile("plugin/albus-conflictius.lua")
+    local commands = vim.api.nvim_get_commands({})
+    assert.is_not_nil(commands["AlbusConflictius"])
+  end)
+end)
