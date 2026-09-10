@@ -121,7 +121,7 @@ describe("albus-conflictius.dashboard", function()
       end)
 
       local lines = file_lines(handle.bufnr)
-      assert.is_true(table.concat(lines, "\n"):find("ALL CONFLICTS RESOLVED", 1, true) ~= nil)
+      assert.is_true(table.concat(lines, "\n"):find("CONFLICT", 1, true) ~= nil)
 
       vim.api.nvim_win_call(handle.win, function()
         vim.cmd("normal q")

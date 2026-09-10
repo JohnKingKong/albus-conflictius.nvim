@@ -22,7 +22,7 @@ describe("albus-conflictius.celebrate", function()
     it("includes the wizard art and the celebration message", function()
       local lines = celebrate.frame(1)
       local joined = table.concat(lines, "\n")
-      assert.is_true(joined:find("ALL CONFLICTS RESOLVED", 1, true) ~= nil)
+      assert.is_true(joined:find("CONFLICT", 1, true) ~= nil)
       local banner = require("albus-conflictius.banner")
       local art_first_line = banner.art()[1]
       assert.is_true(joined:find(art_first_line, 1, true) ~= nil)

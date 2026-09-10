@@ -63,7 +63,8 @@ function M.frame(index)
   table.insert(lines, "")
 
   local border = (i % 2 == 0) and "*~*~*~*~*~*" or "~*~*~*~*~*~"
-  table.insert(lines, border .. "  ALL CONFLICTS RESOLVED!  " .. border)
+  local message = (i % 2 == 0) and "ALAKAZAM! ALL CONFLICTS VANISHED!" or "POOF! NOT A SINGLE CONFLICT LEFT!"
+  table.insert(lines, border .. "  " .. message .. "  " .. border)
 
   return lines
 end
