@@ -29,43 +29,14 @@ describe("albus-conflictius.celebrate", function()
     end)
 
     it("keeps the wizard art identical across frames (no motion)", function()
-      -- the wizard block now carries a leading pad (it's centered against the frame's canvas
-      -- width, which can be wider than the wizard itself), so compare the padded block across
-      -- frames for equality, and separately confirm that stripping the (common) pad recovers the
-      -- original art untouched.
+      -- the wizard art is pasted in as-is (not centered against the frame's canvas width -- its
+      -- shape depends on each line's own hand-authored leading whitespace), so the raw joined art
+      -- should appear verbatim, unchanged, in every frame.
       local banner = require("albus-conflictius.banner")
-      local art = banner.art()
-      local wizard_start = 4 -- 1: top sparkle, 2: bottom sparkle, 3: blank, 4: first wizard line
-      local wizard_end = wizard_start + #art - 1
-
-      local function wizard_block(frame_lines)
-        local block = {}
-        for idx = wizard_start, wizard_end do
-          table.insert(block, frame_lines[idx])
-        end
-        return block
-      end
-
-      local frame1 = celebrate.frame(1)
-      local first_block = wizard_block(frame1)
-      for i = 2, celebrate.frame_count() do
-        assert.are.same(first_block, wizard_block(celebrate.frame(i)))
-      end
-
-      -- derive the expected pad the same way the implementation does (canvas width = widest
-      -- line in the frame) rather than reading it off an art line, since individual wizard art
-      -- lines carry their own uneven internal indentation as part of the shape.
-      local canvas_width = 0
-      for _, line in ipairs(frame1) do
-        canvas_width = math.max(canvas_width, #line)
-      end
-      local wizard_width = 0
-      for _, line in ipairs(art) do
-        wizard_width = math.max(wizard_width, #line)
-      end
-      local expected_pad = string.rep(" ", math.max(0, math.floor((canvas_width - wizard_width) / 2)))
-      for idx, line in ipairs(art) do
-        assert.are.equal(expected_pad .. line, first_block[idx])
+      local art = table.concat(banner.art(), "\n")
+      for i = 1, celebrate.frame_count() do
+        local joined = table.concat(celebrate.frame(i), "\n")
+        assert.is_true(joined:find(art, 1, true) ~= nil)
       end
     end)
 
@@ -147,34 +118,37 @@ describe("albus-conflictius.celebrate", function()
       assert.is_true(count >= 3)
     end)
 
-    it("centers narrower rows (sparkles, laser, message) against the wizard's width", function()
+    it("aligns the sparkle rows, laser row, and message on the same center column", function()
       local lines = celebrate.frame(1, "MSG")
-      -- line 1 is the dense top sparkle row -- it should be roughly centered, i.e. have leading
-      -- padding rather than starting flush at column 0 (which is what "left-aligned" looked like).
-      local leading_spaces = #(lines[1]:match("^( *)"))
-      assert.is_true(leading_spaces > 0)
+      local function center_col(line)
+        local leading = #(line:match("^( *)"))
+        local trimmed = line:match("^%s*(.-)%s*$")
+        return leading + #trimmed / 2
+      end
+      local top_center = center_col(lines[1])
+      local laser_row_index = #lines - 2 -- message is last, blank before it, laser before that
+      local laser_center = center_col(lines[laser_row_index])
+      local message_center = center_col(lines[#lines])
+      assert.is_true(math.abs(top_center - laser_center) <= 1)
+      assert.is_true(math.abs(top_center - message_center) <= 1)
     end)
 
-    it("centers every row against the widest one even when the message is wider than the wizard", function()
-      -- long enough that the message line (border + text + border) exceeds the wizard art's
-      -- width -- this used to clamp that row's padding to zero while every other row stayed
-      -- padded, leaving the message flush-left and visibly misaligned from everything else.
+    it("centers the sparkle/laser rows against the message even when it's much wider than them", function()
+      -- long enough that the message line (border + text + border) exceeds the laser/sparkle
+      -- width -- this used to clamp their shared reference width, or (in an earlier attempt)
+      -- push the unrelated wizard art out of its authored position. Neither should happen: the
+      -- message becomes the reference width (little to no padding of its own), and the
+      -- laser/sparkle rows pad out to stay centered under it, while the wizard art is untouched.
       local long_message = string.rep("VERY LONG MESSAGE ", 5)
       local lines = celebrate.frame(1, long_message)
 
-      local canvas_width = 0
-      for _, line in ipairs(lines) do
-        canvas_width = math.max(canvas_width, #line)
-      end
-
       local message_line = lines[#lines]
-      -- the message is the widest row, so it should be the one defining the canvas (little to no
-      -- leading padding of its own)...
       assert.is_true(#(message_line:match("^( *)")) <= 1)
-      assert.are.equal(canvas_width, #message_line)
 
-      -- ...while the wizard art (previously pasted in with zero padding, regardless of canvas
-      -- width) now gets padded to stay centered under the wider message.
+      local top_row = lines[1]
+      assert.is_true(#(top_row:match("^( *)")) > 0)
+      assert.is_true(#top_row <= #message_line)
+
       local banner = require("albus-conflictius.banner")
       local wizard_first_line = banner.art()[1]
       local wizard_row
@@ -183,22 +157,17 @@ describe("albus-conflictius.celebrate", function()
           wizard_row = line
         end
       end
-      assert.is_true(wizard_row ~= nil)
-      assert.is_true(#(wizard_row:match("^( *)")) > 0)
+      assert.are.equal(wizard_first_line, wizard_row)
     end)
 
-    it("keeps both sparkle rows equally dense and spanning the laser's full width", function()
+    it("keeps both sparkle rows solid and exactly as wide as the laser row", function()
       local lines = celebrate.frame(1, "MSG")
-      local function star_count(line)
-        local count = 0
-        for _ in line:gmatch("[^%s]") do
-          count = count + 1
-        end
-        return count
-      end
-      local top_count, bottom_count = star_count(lines[1]), star_count(lines[2])
-      assert.is_true(top_count >= 8)
-      assert.is_true(bottom_count >= 8)
+      local top_content = lines[1]:match("^ *(.-) *$")
+      local bottom_content = lines[2]:match("^ *(.-) *$")
+      assert.is_nil(top_content:find("%s"))
+      assert.is_nil(bottom_content:find("%s"))
+      assert.are.equal(33, #top_content)
+      assert.are.equal(33, #bottom_content)
     end)
   end)
 

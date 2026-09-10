@@ -35,48 +35,36 @@ vim.api.nvim_create_autocmd("ColorScheme", {
 
 local NAMESPACE = vim.api.nvim_create_namespace("albus-conflictius-celebrate")
 
--- Both sparkle rows are equally dense and span (nearly) the full laser width edge-to-edge --
--- two "full lines of stars", not a dense one over a sparse one -- differing only in exact
--- position/phase so they still read as two distinct rows rather than duplicates.
-local SPARKLE_PATTERNS = {
-  { 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32 },
-  { 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31 },
-  { 2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32 },
-  { 3, 6, 9, 12, 15, 18, 21, 24, 27, 30 },
-}
 local SPARK_CHARS = { "*", ".", "'", "+", "x", "o" }
 
 local WIZARD_ART = banner.art()
-local WIZARD_WIDTH = 0
-for _, line in ipairs(WIZARD_ART) do
-  WIZARD_WIDTH = math.max(WIZARD_WIDTH, #line)
-end
 
--- Centers `width` against `canvas_width`, the widest row in the *current* frame -- not a fixed
--- constant. The message line (border + text + border) can easily be wider than the wizard art,
--- and treating wizard width as the fixed reference clamped its padding to zero whenever that
--- happened, leaving the message flush-left while every other row stayed padded. Computing the
--- canvas width fresh per frame (as the max of wizard/laser/message widths) and centering every
--- row -- including the wizard art itself -- against that keeps them all aligned regardless of
--- which one happens to be widest.
+-- Centers `width` against `canvas_width`, the widest of the sparkle/laser/message rows in the
+-- *current* frame -- not a fixed constant. The message line (border + text + border) can easily
+-- be wider than the laser/sparkle rows, and treating a fixed width as the reference clamped its
+-- padding to zero whenever that happened, leaving the message flush-left while everything else
+-- stayed padded. The wizard art is deliberately left out of this: it's hand-drawn with each
+-- line's own leading whitespace baked in as part of the shape (some lines are meant to sit further
+-- right than others -- that's the wizard's silhouette, not incidental padding to strip), so it's
+-- pasted in as-is, at its own original position, same as before this centering logic existed.
 local function pad_for(canvas_width, width)
   return string.rep(" ", math.max(0, math.floor((canvas_width - width) / 2)))
 end
 
--- Returns the row text (centered against canvas_width) plus a list of {col (0-based), hl_group}
--- marks for its special characters, computed at construction time rather than by re-scanning the
--- rendered text afterward.
-local function sparkle_row(positions, canvas_width)
+-- A solid, edge-to-edge row of sparkle characters spanning the full laser width -- "as long as"
+-- the laser line, not a scatter of stars with gaps between them. `phase` shifts which character
+-- (and color) lands on each column, so two calls with different phases still read as visually
+-- distinct rows despite both being fully dense. Returns the row text (centered against
+-- canvas_width) plus a list of {col (0-based), hl_group} marks, computed at construction time
+-- rather than by re-scanning the rendered text afterward.
+local function sparkle_row(phase, canvas_width)
   local row = {}
-  for i = 1, LASER_WIDTH do
-    row[i] = " "
-  end
   local marks = {}
   local pad = pad_for(canvas_width, LASER_WIDTH)
-  for i, pos in ipairs(positions) do
-    local char_index = ((i - 1) % #SPARK_CHARS) + 1
+  for pos = 1, LASER_WIDTH do
+    local char_index = ((pos + phase - 1) % #SPARK_CHARS) + 1
     row[pos] = SPARK_CHARS[char_index]
-    table.insert(marks, { col = #pad + pos - 1, hl_group = SPARK_HL[char_index] })
+    table.insert(marks, { col = #pad + pos - 1, hl_group = SPARK_HL[((pos + phase - 1) % #SPARK_HL) + 1] })
   end
   return pad .. table.concat(row), marks
 end
@@ -125,14 +113,16 @@ function M.frame_count()
   return 8
 end
 
--- Frames are generated, not hand-drawn: two equally dense sparkle rows spanning (almost) the
--- full laser width cycle through scatter patterns, and a "laser" row's spark ping-pongs
+-- Frames are generated, not hand-drawn: two solid, edge-to-edge sparkle rows (same width as the
+-- laser, out of phase with each other for variety) and a "laser" row whose spark ping-pongs
 -- left-right while flashing through the rainbow palette, around a message whose text is itself
--- multicolor letter-by-letter. The canvas width is whichever row is widest *this frame* (the
--- message varies in length; the wizard/laser don't), and every row -- including the wizard art
--- itself -- is centered against that shared width. `message` is fixed for the whole playback
--- (chosen once by `play`/`random_message`), not re-picked per frame. This plays inside the
--- dashboard's own window at its current size, never resized to fit anything.
+-- multicolor letter-by-letter. The canvas width used to center the sparkle/laser/message group is
+-- whichever of those three is widest *this frame* (the message varies in length; the sparkle/laser
+-- don't). The wizard art is pasted in as-is, at its own original position -- it's not part of that
+-- centering group, since its shape depends on each line's own hand-authored leading whitespace.
+-- `message` is fixed for the whole playback (chosen once by `play`/`random_message`), not
+-- re-picked per frame. This plays inside the dashboard's own window at its current size, never
+-- resized to fit anything.
 -- Returns (lines, highlights) -- highlights is a list of {row, col, hl_group} (0-based, single
 -- character wide) plus border ranges, applied by `play` as extmarks.
 function M.frame(index, message)
@@ -142,7 +132,7 @@ function M.frame(index, message)
   local border = (i % 2 == 0) and "*~*~*~*~*~*" or "~*~*~*~*~*~"
   local message_line = border .. "  " .. message .. "  " .. border
 
-  local canvas_width = math.max(WIZARD_WIDTH, LASER_WIDTH, #message_line)
+  local canvas_width = math.max(LASER_WIDTH, #message_line)
 
   local lines = {}
   local highlights = {}
@@ -157,15 +147,14 @@ function M.frame(index, message)
     end
   end
 
-  local top, top_marks = sparkle_row(SPARKLE_PATTERNS[((i - 1) % #SPARKLE_PATTERNS) + 1], canvas_width)
+  local top, top_marks = sparkle_row(i, canvas_width)
   push(top, top_marks)
-  local bottom, bottom_marks = sparkle_row(SPARKLE_PATTERNS[(i % #SPARKLE_PATTERNS) + 1], canvas_width)
+  local bottom, bottom_marks = sparkle_row(i + 3, canvas_width)
   push(bottom, bottom_marks)
   push("")
 
-  local wizard_pad = pad_for(canvas_width, WIZARD_WIDTH)
   for _, line in ipairs(WIZARD_ART) do
-    push(wizard_pad .. line)
+    push(line)
   end
 
   push("")
