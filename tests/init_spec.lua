@@ -1,6 +1,7 @@
 describe("albus-conflictius.init", function()
   local albus
   local tmpdir
+  local original_cwd
 
   before_each(function()
     for _, name in ipairs({
@@ -17,12 +18,18 @@ describe("albus-conflictius.init", function()
     end
     albus = require("albus-conflictius")
 
+    original_cwd = vim.fn.getcwd()
     tmpdir = vim.fn.tempname()
     vim.fn.mkdir(tmpdir, "p")
     vim.cmd("cd " .. vim.fn.fnameescape(tmpdir))
+    -- On macOS, tempname() paths go through /var, which is a symlink to
+    -- /private/var; getcwd() reports the resolved path. Re-read tmpdir from
+    -- getcwd() so string comparisons against cwd()-derived values agree.
+    tmpdir = vim.fn.getcwd()
   end)
 
   after_each(function()
+    vim.cmd("cd " .. vim.fn.fnameescape(original_cwd))
     vim.fn.delete(tmpdir, "rf")
   end)
 
@@ -216,6 +223,138 @@ describe("albus-conflictius.init", function()
       vim.notify = original_notify
       assert.is_false(opened)
       assert.is_true(notified:find("no conflicts", 1, true) ~= nil)
+    end)
+  end)
+
+  describe("setup", function()
+    it("calls git.ensure_diff3_style with the current cwd", function()
+      local ensured_cwd
+      albus._set_watcher({ setup = function() end })
+      albus._set_git({
+        ensure_diff3_style = function(cwd_arg)
+          ensured_cwd = cwd_arg
+        end,
+      })
+
+      albus.setup({})
+
+      assert.are.equal(tmpdir, ensured_cwd)
+    end)
+  end)
+
+  describe("auto_open (watcher callback) banner passthrough", function()
+    it("passes show_banner = true when config.banner is true", function()
+      local captured_show_banner
+      local on_new_conflicts
+      albus._set_git({ ensure_diff3_style = function() end })
+      albus._set_watcher({
+        setup = function(callback)
+          on_new_conflicts = callback
+        end,
+      })
+      albus._set_dashboard({
+        open = function(_files, opts)
+          captured_show_banner = opts.show_banner
+          return { win = -1, bufnr = -1 }
+        end,
+        refresh = function() end,
+        close = function() end,
+      })
+
+      albus.setup({ banner = true })
+      on_new_conflicts({ "a.txt" })
+
+      assert.is_true(captured_show_banner)
+    end)
+
+    it("passes show_banner = false when config.banner is false", function()
+      local captured_show_banner
+      local on_new_conflicts
+      albus._set_git({ ensure_diff3_style = function() end })
+      albus._set_watcher({
+        setup = function(callback)
+          on_new_conflicts = callback
+        end,
+      })
+      albus._set_dashboard({
+        open = function(_files, opts)
+          captured_show_banner = opts.show_banner
+          return { win = -1, bufnr = -1 }
+        end,
+        refresh = function() end,
+        close = function() end,
+      })
+
+      albus.setup({ banner = false })
+      on_new_conflicts({ "a.txt" })
+
+      assert.is_false(captured_show_banner)
+    end)
+  end)
+
+  describe("resolve_view on_resolved -> auto_stage", function()
+    it("stages the file when auto_stage is true", function()
+      local staged_path
+      local captured_on_open
+      require("albus-conflictius.config").setup({ auto_stage = true })
+      albus._set_git({
+        conflicted_files = function()
+          return { "a.txt" }
+        end,
+        stage = function(_, path)
+          staged_path = path
+        end,
+      })
+      albus._set_dashboard({
+        open = function(_files, opts)
+          captured_on_open = opts.on_open
+          return { win = -1, bufnr = -1 }
+        end,
+        refresh = function() end,
+        close = function() end,
+      })
+      albus._set_resolve_view({
+        open = function(_cwd, path, ropts)
+          ropts.on_resolved(path)
+        end,
+      })
+
+      albus.open()
+      captured_on_open("a.txt")
+
+      assert.are.equal("a.txt", staged_path)
+    end)
+
+    it("does not stage when auto_stage is false", function()
+      local staged = false
+      local captured_on_open
+      require("albus-conflictius.config").setup({ auto_stage = false })
+      albus._set_git({
+        conflicted_files = function()
+          return { "a.txt" }
+        end,
+        stage = function()
+          staged = true
+        end,
+      })
+      albus._set_dashboard({
+        open = function(_files, opts)
+          captured_on_open = opts.on_open
+          return { win = -1, bufnr = -1 }
+        end,
+        refresh = function() end,
+        close = function() end,
+      })
+      albus._set_resolve_view({
+        open = function(_cwd, path, ropts)
+          ropts.on_resolved(path)
+        end,
+      })
+
+      albus.open()
+      captured_on_open("a.txt")
+
+      assert.is_false(staged)
     end)
   end)
 end)
