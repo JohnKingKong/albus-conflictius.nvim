@@ -45,12 +45,21 @@ cursor on the first conflict and enables these buffer-local keymaps:
     <leader>cn    jump to the next conflict
     <leader>cp    jump to the previous conflict
     <leader>cw    run the wand on this file (acts on the buffer, not disk)
-    <leader>cd    toggle a full base/ours/theirs diff view alongside it
+    <leader>cd    toggle an ours | result | theirs 3-pane diff view
     q             close the diff panes if open, else close the whole view
     :w            save -- auto-stages once no markers remain
 
+`<leader>cd` opens two extra read-only panes around the real file: "ours" on
+the left, "theirs" on the right, each showing what the file would look like
+if every remaining hunk were resolved to that side. Pressing <CR> in either
+pane accepts that side for the hunk under the cursor there -- no need to
+remember which of <leader>co/<leader>ct applies, the pane you're in decides.
+`q` closes the diff panes first (non-destructive, <leader>cd reopens them);
+pressed again it closes the whole view, prompting for confirmation only if
+conflicts still remain.
+
 The "ours" and "theirs" side of each remaining hunk are background
-highlighted (|hl-DiffChange| and |hl-DiffAdd| by default) so they're
+highlighted (|hl-DiffDelete| and |hl-DiffAdd| by default) so they're
 visually distinct without reading the marker text. Override
 `AlbusConflictiusOurs`/`AlbusConflictiusTheirs` to customize.
 

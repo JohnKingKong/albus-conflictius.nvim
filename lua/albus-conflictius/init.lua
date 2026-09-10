@@ -40,7 +40,6 @@ end
 
 local function open_file(path)
   resolve_view.open(cwd(), path, {
-    git = git,
     on_resolved = function(resolved_path)
       if config.get().auto_stage then
         git.stage(cwd(), resolved_path)

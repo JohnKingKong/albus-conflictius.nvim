@@ -36,6 +36,22 @@ local function file_under_cursor(handle)
   return handle.files[idx]
 end
 
+-- Keeps the cursor inside the file-list region -- it can never land on the art/divider header,
+-- which isn't interactive and has nothing a keymap could act on.
+local function clamp_cursor(handle)
+  if not vim.api.nvim_win_is_valid(handle.win) or #handle.files == 0 then
+    return
+  end
+  local min_line = handle.offset + 1
+  local max_line = handle.offset + #handle.files
+  local line = vim.api.nvim_win_get_cursor(handle.win)[1]
+  if line < min_line then
+    vim.api.nvim_win_set_cursor(handle.win, { min_line, 0 })
+  elseif line > max_line then
+    vim.api.nvim_win_set_cursor(handle.win, { max_line, 0 })
+  end
+end
+
 function M.open(files, opts)
   opts = opts or {}
 
@@ -76,6 +92,16 @@ function M.open(files, opts)
 
   local handle = { win = win, bufnr = bufnr, files = files, offset = 0 }
   handle.offset = render(bufnr, files, opts.show_banner)
+
+  if handle.offset > 0 then
+    vim.api.nvim_win_set_cursor(win, { handle.offset + 1, 0 })
+    vim.api.nvim_create_autocmd("CursorMoved", {
+      buffer = bufnr,
+      callback = function()
+        clamp_cursor(handle)
+      end,
+    })
+  end
 
   vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = bufnr, silent = true })
   vim.keymap.set("n", "<Esc>", "<cmd>close<cr>", { buffer = bufnr, silent = true })
@@ -123,6 +149,7 @@ function M.refresh(handle, files)
   end
   handle.files = files
   handle.offset = render(handle.bufnr, files, handle.offset > 0)
+  clamp_cursor(handle)
 end
 
 function M.close(handle)

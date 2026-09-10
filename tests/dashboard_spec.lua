@@ -30,6 +30,20 @@ describe("albus-conflictius.dashboard", function()
     close(handle)
   end)
 
+  it("starts the cursor on the first file, not the banner art", function()
+    local handle = dashboard.open({ "a.lua", "b.lua" }, { show_banner = true })
+    assert.are.equal(handle.offset + 1, vim.api.nvim_win_get_cursor(handle.win)[1])
+    close(handle)
+  end)
+
+  it("clamps the cursor so it can't move onto the banner art", function()
+    local handle = dashboard.open({ "a.lua", "b.lua" }, { show_banner = true })
+    vim.api.nvim_win_set_cursor(handle.win, { 1, 0 })
+    vim.api.nvim_exec_autocmds("CursorMoved", { buffer = handle.bufnr })
+    assert.are.equal(handle.offset + 1, vim.api.nvim_win_get_cursor(handle.win)[1])
+    close(handle)
+  end)
+
   it("<CR> calls on_open with the file under cursor", function()
     local opened
     local handle = dashboard.open({ "a.lua", "b.lua" }, {

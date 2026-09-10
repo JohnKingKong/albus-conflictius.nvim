@@ -13,14 +13,6 @@ describe("albus-conflictius.resolve_view", function()
     vim.fn.delete(tmpdir, "rf")
   end)
 
-  local function fake_git(blobs)
-    return {
-      show = function(_, stage, _)
-        return blobs[stage]
-      end,
-    }
-  end
-
   local function write_file(path, content)
     local file = io.open(tmpdir .. "/" .. path, "w")
     file:write(content)
@@ -42,10 +34,10 @@ describe("albus-conflictius.resolve_view", function()
   it("opens the file alone (no diff panes) and places the cursor on the first conflict", function()
     write_file("conflict.txt", "top\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\nbottom\n")
 
-    local handle = resolve_view.open(tmpdir, "conflict.txt", { git = fake_git({}) })
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
 
     assert.is_true(vim.api.nvim_win_is_valid(handle.main_win))
-    assert.are.equal(0, #handle.scratch_bufnrs)
+    assert.is_false(handle.diff_open)
     assert.are.equal(2, vim.api.nvim_win_get_cursor(handle.main_win)[1])
 
     vim.cmd("tabclose!")
@@ -54,7 +46,7 @@ describe("albus-conflictius.resolve_view", function()
   it("<leader>co accepts ours for the hunk under the cursor", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
 
-    local handle = resolve_view.open(tmpdir, "conflict.txt", { git = fake_git({}) })
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
     feed(handle.main_win, "<leader>co")
 
     assert.are.equal("ours line", buf_content(handle.main_bufnr))
@@ -65,7 +57,7 @@ describe("albus-conflictius.resolve_view", function()
   it("<leader>ct accepts theirs for the hunk under the cursor", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
 
-    local handle = resolve_view.open(tmpdir, "conflict.txt", { git = fake_git({}) })
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
     feed(handle.main_win, "<leader>ct")
 
     assert.are.equal("theirs line", buf_content(handle.main_bufnr))
@@ -76,7 +68,7 @@ describe("albus-conflictius.resolve_view", function()
   it("<leader>cb accepts both, ours then theirs", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
 
-    local handle = resolve_view.open(tmpdir, "conflict.txt", { git = fake_git({}) })
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
     feed(handle.main_win, "<leader>cb")
 
     assert.are.equal("ours line\ntheirs line", buf_content(handle.main_bufnr))
@@ -103,7 +95,7 @@ describe("albus-conflictius.resolve_view", function()
       }, "\n")
     )
 
-    local handle = resolve_view.open(tmpdir, "conflict.txt", { git = fake_git({}) })
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
     feed(handle.main_win, "<leader>co")
 
     -- first hunk collapsed to 1 line ("a-ours"), so the second hunk's <<<<<<< now starts at line 3
@@ -131,7 +123,7 @@ describe("albus-conflictius.resolve_view", function()
       }, "\n")
     )
 
-    local handle = resolve_view.open(tmpdir, "conflict.txt", { git = fake_git({}) })
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
     feed(handle.main_win, "<leader>cn")
     assert.are.equal(7, vim.api.nvim_win_get_cursor(handle.main_win)[1])
 
@@ -141,26 +133,61 @@ describe("albus-conflictius.resolve_view", function()
     vim.cmd("tabclose!")
   end)
 
-  it("<leader>cd opens the base/ours/theirs diff panes, and toggles them closed again", function()
-    write_file("conflict.txt", "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n")
+  it("<leader>cd opens ours (left) | result (middle) | theirs (right)", function()
+    write_file(
+      "conflict.txt",
+      table.concat({ "top", "<<<<<<< HEAD", "a-ours", "=======", "a-theirs", ">>>>>>> branch", "middle" }, "\n")
+    )
 
-    local handle = resolve_view.open(tmpdir, "conflict.txt", {
-      git = fake_git({ [1] = "base content", [2] = "ours content", [3] = "theirs content" }),
-    })
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
+    feed(handle.main_win, "<leader>cd")
+
+    assert.is_true(handle.diff_open)
+    assert.is_true(vim.api.nvim_win_is_valid(handle.ours_win))
+    assert.is_true(vim.api.nvim_win_is_valid(handle.theirs_win))
+
+    local ours_col = vim.api.nvim_win_get_position(handle.ours_win)[2]
+    local main_col = vim.api.nvim_win_get_position(handle.main_win)[2]
+    local theirs_col = vim.api.nvim_win_get_position(handle.theirs_win)[2]
+    assert.is_true(ours_col < main_col)
+    assert.is_true(main_col < theirs_col)
+
+    assert.are.equal("top\na-ours\nmiddle", buf_content(handle.ours_bufnr))
+    assert.are.equal("top\na-theirs\nmiddle", buf_content(handle.theirs_bufnr))
+    assert.is_true(buf_content(handle.main_bufnr):find("<<<<<<<", 1, true) ~= nil)
 
     feed(handle.main_win, "<leader>cd")
-    assert.are.equal(3, #handle.scratch_bufnrs)
+    assert.is_false(handle.diff_open)
 
-    local contents = {}
-    for _, bufnr in ipairs(handle.scratch_bufnrs) do
-      table.insert(contents, buf_content(bufnr))
-      assert.is_false(vim.bo[bufnr].modifiable)
-    end
-    table.sort(contents)
-    assert.are.same({ "base content", "ours content", "theirs content" }, contents)
+    vim.cmd("tabclose!")
+  end)
 
+  it("<CR> in the ours pane accepts ours for the hunk at the cursor and refreshes every pane", function()
+    write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
+
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
     feed(handle.main_win, "<leader>cd")
-    assert.are.equal(0, #handle.scratch_bufnrs)
+
+    vim.api.nvim_win_set_cursor(handle.ours_win, { 1, 0 })
+    feed(handle.ours_win, "<CR>")
+
+    assert.are.equal("ours line", buf_content(handle.main_bufnr))
+    assert.are.equal("ours line", buf_content(handle.ours_bufnr))
+    assert.are.equal("ours line", buf_content(handle.theirs_bufnr))
+
+    vim.cmd("tabclose!")
+  end)
+
+  it("<CR> in the theirs pane accepts theirs for the hunk at the cursor", function()
+    write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
+
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
+    feed(handle.main_win, "<leader>cd")
+
+    vim.api.nvim_win_set_cursor(handle.theirs_win, { 1, 0 })
+    feed(handle.theirs_win, "<CR>")
+
+    assert.are.equal("theirs line", buf_content(handle.main_bufnr))
 
     vim.cmd("tabclose!")
   end)
@@ -168,7 +195,7 @@ describe("albus-conflictius.resolve_view", function()
   it("highlights ours and theirs with distinct extmarks", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
 
-    local handle = resolve_view.open(tmpdir, "conflict.txt", { git = fake_git({}) })
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
 
     local ns = vim.api.nvim_create_namespace("albus-conflictius-resolve-view")
     local marks = vim.api.nvim_buf_get_extmarks(handle.main_bufnr, ns, 0, -1, { details = true })
@@ -198,7 +225,7 @@ describe("albus-conflictius.resolve_view", function()
       }, "\n")
     )
 
-    local handle = resolve_view.open(tmpdir, "conflict.txt", { git = fake_git({}) })
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
     feed(handle.main_win, "<leader>cw")
 
     assert.are.equal("changed", buf_content(handle.main_bufnr))
@@ -211,22 +238,57 @@ describe("albus-conflictius.resolve_view", function()
     vim.cmd("tabclose!")
   end)
 
-  it("q closes the diff panes first, then closes the whole view on a second press", function()
-    write_file("conflict.txt", "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n")
+  it("q closes the diff panes first, then closes the whole view once nothing remains", function()
+    write_file(
+      "conflict.txt",
+      table.concat({
+        "<<<<<<< HEAD",
+        "same",
+        "||||||| base",
+        "same",
+        "=======",
+        "changed",
+        ">>>>>>> branch",
+      }, "\n")
+    )
 
-    local handle = resolve_view.open(tmpdir, "conflict.txt", {
-      git = fake_git({ [1] = "base", [2] = "ours", [3] = "theirs" }),
-    })
-
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
     feed(handle.main_win, "<leader>cd")
-    assert.are.equal(3, #handle.scratch_bufnrs)
+    assert.is_true(handle.diff_open)
 
     feed(handle.main_win, "q")
-    assert.are.equal(0, #handle.scratch_bufnrs)
+    assert.is_false(handle.diff_open)
     assert.is_true(vim.api.nvim_win_is_valid(handle.main_win))
 
+    feed(handle.main_win, "<leader>cw")
     feed(handle.main_win, "q")
     assert.is_false(vim.api.nvim_win_is_valid(handle.main_win))
+  end)
+
+  it("q prompts for confirmation before closing when conflicts remain, and respects the answer", function()
+    write_file("conflict.txt", "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n")
+
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {})
+
+    local original_confirm = vim.fn.confirm
+    local confirm_calls = 0
+
+    vim.fn.confirm = function()
+      confirm_calls = confirm_calls + 1
+      return 2 -- "No"
+    end
+    feed(handle.main_win, "q")
+    assert.are.equal(1, confirm_calls)
+    assert.is_true(vim.api.nvim_win_is_valid(handle.main_win))
+
+    vim.fn.confirm = function()
+      confirm_calls = confirm_calls + 1
+      return 1 -- "Yes"
+    end
+    feed(handle.main_win, "q")
+    assert.is_false(vim.api.nvim_win_is_valid(handle.main_win))
+
+    vim.fn.confirm = original_confirm
   end)
 
   it("calls on_resolved when the main buffer is saved with no remaining markers", function()
@@ -234,7 +296,6 @@ describe("albus-conflictius.resolve_view", function()
 
     local resolved_path
     local handle = resolve_view.open(tmpdir, "conflict.txt", {
-      git = fake_git({ [1] = "base", [2] = "ours", [3] = "theirs" }),
       on_resolved = function(p)
         resolved_path = p
       end,
