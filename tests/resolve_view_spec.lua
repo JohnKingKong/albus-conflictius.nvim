@@ -165,6 +165,70 @@ describe("albus-conflictius.resolve_view", function()
     vim.cmd("tabclose!")
   end)
 
+  it("highlights ours and theirs with distinct extmarks", function()
+    write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
+
+    local handle = resolve_view.open(tmpdir, "conflict.txt", { git = fake_git({}) })
+
+    local ns = vim.api.nvim_create_namespace("albus-conflictius-resolve-view")
+    local marks = vim.api.nvim_buf_get_extmarks(handle.main_bufnr, ns, 0, -1, { details = true })
+    assert.is_true(#marks > 0)
+
+    local groups = {}
+    for _, mark in ipairs(marks) do
+      table.insert(groups, mark[4].hl_group)
+    end
+    table.sort(groups)
+    assert.are.same({ "AlbusConflictiusOurs", "AlbusConflictiusTheirs" }, groups)
+
+    vim.cmd("tabclose!")
+  end)
+
+  it("<leader>cw runs the wand on the buffer without touching disk", function()
+    write_file(
+      "conflict.txt",
+      table.concat({
+        "<<<<<<< HEAD",
+        "same",
+        "||||||| base",
+        "same",
+        "=======",
+        "changed",
+        ">>>>>>> branch",
+      }, "\n")
+    )
+
+    local handle = resolve_view.open(tmpdir, "conflict.txt", { git = fake_git({}) })
+    feed(handle.main_win, "<leader>cw")
+
+    assert.are.equal("changed", buf_content(handle.main_bufnr))
+
+    local file = io.open(tmpdir .. "/conflict.txt", "r")
+    local disk_content = file:read("*a")
+    file:close()
+    assert.is_true(disk_content:find("<<<<<<<", 1, true) ~= nil)
+
+    vim.cmd("tabclose!")
+  end)
+
+  it("q closes the diff panes first, then closes the whole view on a second press", function()
+    write_file("conflict.txt", "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n")
+
+    local handle = resolve_view.open(tmpdir, "conflict.txt", {
+      git = fake_git({ [1] = "base", [2] = "ours", [3] = "theirs" }),
+    })
+
+    feed(handle.main_win, "<leader>cd")
+    assert.are.equal(3, #handle.scratch_bufnrs)
+
+    feed(handle.main_win, "q")
+    assert.are.equal(0, #handle.scratch_bufnrs)
+    assert.is_true(vim.api.nvim_win_is_valid(handle.main_win))
+
+    feed(handle.main_win, "q")
+    assert.is_false(vim.api.nvim_win_is_valid(handle.main_win))
+  end)
+
   it("calls on_resolved when the main buffer is saved with no remaining markers", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n")
 

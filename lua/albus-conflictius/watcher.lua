@@ -67,6 +67,16 @@ local function arm_fs_watcher(git_mod, on_new_conflicts)
   end)
 end
 
+-- Deferred so our dashboard wins any focus race with other startup UI that opens on VimEnter
+-- (e.g. neo-tree auto-opening and focusing itself) — since setup() typically runs during plugin
+-- config load, well before VimEnter, an immediate dashboard open here would just get its focus
+-- stolen the moment VimEnter-time plugins finish opening their own windows afterward.
+local function initial_check(git_mod, on_new_conflicts)
+  vim.defer_fn(function()
+    M._check(git_mod, vim.fn.getcwd(), on_new_conflicts)
+  end, 100)
+end
+
 function M.setup(on_new_conflicts, opts)
   opts = opts or {}
   local git_mod = opts.git or require("albus-conflictius.git")
@@ -90,7 +100,19 @@ function M.setup(on_new_conflicts, opts)
     desc = "albus-conflictius: check for conflicts on cwd change",
   })
 
-  M._check(git_mod, vim.fn.getcwd(), on_new_conflicts)
+  if vim.v.vim_did_enter == 1 then
+    initial_check(git_mod, on_new_conflicts)
+  else
+    vim.api.nvim_create_autocmd("VimEnter", {
+      group = augroup,
+      once = true,
+      callback = function()
+        initial_check(git_mod, on_new_conflicts)
+      end,
+      desc = "albus-conflictius: check for conflicts once Neovim finishes starting",
+    })
+  end
+
   arm_fs_watcher(git_mod, on_new_conflicts)
 end
 
