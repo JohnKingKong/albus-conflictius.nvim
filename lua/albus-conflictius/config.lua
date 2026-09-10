@@ -3,6 +3,7 @@ local M = {}
 M.defaults = {
   banner = true,
   auto_stage = true,
+  celebrate = true,
 }
 
 local resolved = nil
@@ -22,16 +23,23 @@ function M.setup(opts)
   if opts.auto_stage ~= nil then
     validate_boolean_opt("auto_stage", opts.auto_stage)
   end
+  if opts.celebrate ~= nil then
+    validate_boolean_opt("celebrate", opts.celebrate)
+  end
 
   resolved = {
     banner = opts.banner,
     auto_stage = opts.auto_stage,
+    celebrate = opts.celebrate,
   }
   if resolved.banner == nil then
     resolved.banner = M.defaults.banner
   end
   if resolved.auto_stage == nil then
     resolved.auto_stage = M.defaults.auto_stage
+  end
+  if resolved.celebrate == nil then
+    resolved.celebrate = M.defaults.celebrate
   end
 
   return resolved

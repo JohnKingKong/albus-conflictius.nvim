@@ -110,4 +110,35 @@ describe("albus-conflictius.dashboard", function()
       assert.is_false(vim.api.nvim_win_is_valid(handle.win))
     end)
   end)
+
+  describe("celebrate", function()
+    it("plays the animation in the dashboard's own window and calls on_done", function()
+      local handle = dashboard.open({ "a.lua" }, {})
+      local done = false
+
+      dashboard.celebrate(handle, function()
+        done = true
+      end)
+
+      local lines = file_lines(handle.bufnr)
+      assert.is_true(table.concat(lines, "\n"):find("ALL CONFLICTS RESOLVED", 1, true) ~= nil)
+
+      vim.api.nvim_win_call(handle.win, function()
+        vim.cmd("normal q")
+      end)
+      assert.is_true(done)
+    end)
+
+    it("calls on_done immediately if the window is already gone", function()
+      local handle = dashboard.open({ "a.lua" }, {})
+      close(handle)
+
+      local done = false
+      dashboard.celebrate(handle, function()
+        done = true
+      end)
+
+      assert.is_true(done)
+    end)
+  end)
 end)

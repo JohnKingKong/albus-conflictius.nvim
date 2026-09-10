@@ -35,7 +35,17 @@ local function refresh_dashboard()
   if not dashboard_handle then
     return
   end
-  dashboard.refresh(dashboard_handle, git.conflicted_files(cwd()))
+
+  local files = git.conflicted_files(cwd())
+  if #files == 0 and config.get().celebrate then
+    local handle = dashboard_handle
+    dashboard.celebrate(handle, function()
+      dashboard.close(handle)
+    end)
+    return
+  end
+
+  dashboard.refresh(dashboard_handle, files)
 end
 
 local function open_file(path)

@@ -158,4 +158,15 @@ function M.close(handle)
   end
 end
 
+-- Plays the celebration animation in this dashboard's own window/buffer, then calls `on_done`
+-- (the caller closes the window from there) -- if the window's already gone, skips straight to
+-- `on_done`.
+function M.celebrate(handle, on_done)
+  if not vim.api.nvim_win_is_valid(handle.win) then
+    on_done()
+    return
+  end
+  require("albus-conflictius.celebrate").play(handle.bufnr, handle.win, on_done)
+end
+
 return M

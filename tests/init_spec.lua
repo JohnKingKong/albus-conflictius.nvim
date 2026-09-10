@@ -396,4 +396,88 @@ describe("albus-conflictius.init", function()
       assert.is_false(staged)
     end)
   end)
+
+  describe("refresh_dashboard celebration", function()
+    it("celebrates instead of refreshing when the last conflict is resolved and celebrate=true", function()
+      write_conflict_file(
+        "only.txt",
+        table.concat({ "<<<<<<< HEAD", "same", "||||||| base", "same", "=======", "changed", ">>>>>>> branch" }, "\n")
+      )
+
+      local conflicted_calls = 0
+      local celebrate_called, refresh_called = false, false
+
+      require("albus-conflictius.config").setup({ celebrate = true })
+      albus._set_git({
+        conflicted_files = function()
+          conflicted_calls = conflicted_calls + 1
+          if conflicted_calls == 1 then
+            return { "only.txt" }
+          end
+          return {}
+        end,
+        stage = function() end,
+      })
+      albus._set_dashboard({
+        open = function()
+          return { win = -1, bufnr = -1 }
+        end,
+        refresh = function()
+          refresh_called = true
+        end,
+        close = function() end,
+        celebrate = function(_handle, on_done)
+          celebrate_called = true
+          on_done()
+        end,
+      })
+
+      albus.open()
+      albus.wand_file("only.txt")
+
+      assert.is_true(celebrate_called)
+      assert.is_false(refresh_called)
+    end)
+
+    it("falls back to a normal refresh when celebrate=false", function()
+      write_conflict_file(
+        "only2.txt",
+        table.concat({ "<<<<<<< HEAD", "same", "||||||| base", "same", "=======", "changed", ">>>>>>> branch" }, "\n")
+      )
+
+      local conflicted_calls = 0
+      local celebrate_called, refresh_called = false, false
+
+      require("albus-conflictius.config").setup({ celebrate = false })
+      albus._set_git({
+        conflicted_files = function()
+          conflicted_calls = conflicted_calls + 1
+          if conflicted_calls == 1 then
+            return { "only2.txt" }
+          end
+          return {}
+        end,
+        stage = function() end,
+      })
+      albus._set_dashboard({
+        open = function()
+          return { win = -1, bufnr = -1 }
+        end,
+        refresh = function()
+          refresh_called = true
+        end,
+        close = function() end,
+        celebrate = function(_handle, on_done)
+          celebrate_called = true
+          on_done()
+        end,
+      })
+
+      albus.open()
+      albus.wand_file("only2.txt")
+
+      assert.is_false(celebrate_called)
+      assert.is_true(refresh_called)
+    end)
+  end)
 end)

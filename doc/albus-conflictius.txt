@@ -7,7 +7,8 @@ CONTENTS                                          *albus-conflictius-contents*
     2. Setup ................. |albus-conflictius-setup|
     3. Commands .............. |albus-conflictius-commands|
     4. Resolve view keymaps .. |albus-conflictius-resolve-view|
-    5. Configuration ......... |albus-conflictius-configuration|
+    5. Celebration ........... |albus-conflictius-celebration|
+    6. Configuration ......... |albus-conflictius-configuration|
 
 ==============================================================================
 1. Introduction                               *albus-conflictius-introduction*
@@ -68,12 +69,21 @@ visually distinct without reading the marker text. Override
 `AlbusConflictiusOurs`/`AlbusConflictiusTheirs` to customize.
 
 ==============================================================================
-5. Configuration                             *albus-conflictius-configuration*
+5. Celebration                                 *albus-conflictius-celebration*
+
+When the last conflicted file in the repo is resolved, the dashboard plays a
+short ASCII animation (fireworks, a sweeping laser beam, the wizard) before
+closing. Press <CR>, q, or <Esc> to skip it. Disable it entirely with
+`celebrate = false` (see |albus-conflictius-configuration|).
+
+==============================================================================
+6. Configuration                             *albus-conflictius-configuration*
 
 >lua
     require("albus-conflictius").setup({
       banner = true,
       auto_stage = true,
+      celebrate = true,
     })
 <
 
