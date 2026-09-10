@@ -139,6 +139,45 @@ describe("albus-conflictius.init", function()
     end)
   end)
 
+  describe("wand_file robustness", function()
+    it("notifies and returns zero counts when the file cannot be read", function()
+      local notified
+      local original_notify = vim.notify
+      vim.notify = function(msg, level)
+        notified = { msg = msg, level = level }
+      end
+
+      albus._set_dashboard({ open = function() end, refresh = function() end, close = function() end })
+
+      local summary = albus.wand_file("does-not-exist.txt")
+
+      vim.notify = original_notify
+      assert.are.equal(0, summary.resolved_count)
+      assert.are.equal(0, summary.remaining_count)
+      assert.is_true(notified.msg:find("could not read", 1, true) ~= nil)
+    end)
+
+    it("reloads an already-open buffer for the resolved file so it doesn't show stale content", function()
+      write_conflict_file(
+        "open-buf.txt",
+        table.concat({ "<<<<<<< HEAD", "same", "||||||| base", "same", "=======", "changed", ">>>>>>> branch" }, "\n")
+      )
+
+      vim.cmd("edit " .. tmpdir .. "/open-buf.txt")
+      local bufnr = vim.api.nvim_get_current_buf()
+
+      albus._set_git({ stage = function() end })
+      albus._set_dashboard({ open = function() end, refresh = function() end, close = function() end })
+
+      albus.wand_file("open-buf.txt")
+
+      local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      assert.are.same({ "changed" }, lines)
+
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+    end)
+  end)
+
   describe("wand_all", function()
     it("runs the wand across every conflicted file reported by git", function()
       write_conflict_file(

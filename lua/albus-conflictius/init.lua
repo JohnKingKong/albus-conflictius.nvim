@@ -53,14 +53,29 @@ end
 function M.wand_file(path)
   local full_path = cwd() .. "/" .. path
   local file = io.open(full_path, "r")
+  if not file then
+    vim.notify("albus-conflictius: could not read " .. path .. " (skipped)", vim.log.levels.WARN)
+    return { resolved_count = 0, remaining_count = 0 }
+  end
   local content = file:read("*a")
   file:close()
 
   local new_content, resolved_count, remaining_count = wand.resolve_content(content)
 
   local out = io.open(full_path, "w")
+  if not out then
+    vim.notify("albus-conflictius: could not write " .. path .. " (skipped)", vim.log.levels.WARN)
+    return { resolved_count = 0, remaining_count = 0 }
+  end
   out:write(new_content)
   out:close()
+
+  local bufnr = vim.fn.bufnr(full_path)
+  if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+    vim.api.nvim_buf_call(bufnr, function()
+      vim.cmd("edit!")
+    end)
+  end
 
   if remaining_count == 0 and config.get().auto_stage then
     git.stage(cwd(), path)

@@ -46,13 +46,7 @@ describe("albus-conflictius.resolve_view", function()
       assert.is_false(vim.bo[bufnr].modifiable)
     end
 
-    vim.cmd("diffoff!")
-    vim.api.nvim_win_close(handle.main_win, true)
-    for _, bufnr in ipairs(handle.scratch_bufnrs) do
-      if vim.api.nvim_buf_is_valid(bufnr) then
-        vim.api.nvim_buf_delete(bufnr, { force = true })
-      end
-    end
+    vim.cmd("tabclose!")
   end)
 
   it("calls on_resolved when the main buffer is saved with no remaining markers", function()
@@ -77,12 +71,6 @@ describe("albus-conflictius.resolve_view", function()
 
     assert.are.equal(path, resolved_path)
 
-    vim.cmd("diffoff!")
-    vim.api.nvim_win_close(handle.main_win, true)
-    for _, bufnr in ipairs(handle.scratch_bufnrs) do
-      if vim.api.nvim_buf_is_valid(bufnr) then
-        vim.api.nvim_buf_delete(bufnr, { force = true })
-      end
-    end
+    vim.cmd("tabclose!")
   end)
 end)

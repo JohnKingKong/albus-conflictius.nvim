@@ -21,6 +21,7 @@ function M.open(cwd, path, opts)
   opts = opts or {}
   local git = opts.git or require("albus-conflictius.git")
 
+  vim.cmd("tabnew")
   vim.cmd("edit " .. vim.fn.fnameescape(cwd .. "/" .. path))
   local main_bufnr = vim.api.nvim_get_current_buf()
   local main_win = vim.api.nvim_get_current_win()
