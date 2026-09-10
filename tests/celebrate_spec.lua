@@ -29,9 +29,9 @@ describe("albus-conflictius.celebrate", function()
     end)
 
     it("keeps the wizard art identical across frames (no motion)", function()
-      -- the wizard art is pasted in as-is (not centered against the frame's canvas width -- its
-      -- shape depends on each line's own hand-authored leading whitespace), so the raw joined art
-      -- should appear verbatim, unchanged, in every frame.
+      -- the wizard art is pasted in as-is (not centered/padded -- its shape depends on each
+      -- line's own hand-authored leading whitespace), so the raw joined art should appear
+      -- verbatim, unchanged, in every frame.
       local banner = require("albus-conflictius.banner")
       local art = table.concat(banner.art(), "\n")
       for i = 1, celebrate.frame_count() do
@@ -55,20 +55,17 @@ describe("albus-conflictius.celebrate", function()
     it("keeps a fixed message across frames instead of picking a new one each time", function()
       local lines1 = celebrate.frame(1, "CUSTOM MESSAGE")
       local lines2 = celebrate.frame(3, "CUSTOM MESSAGE")
-      assert.is_true(lines1[#lines1]:find("CUSTOM MESSAGE", 1, true) ~= nil)
-      assert.is_true(lines2[#lines2]:find("CUSTOM MESSAGE", 1, true) ~= nil)
+      -- the message is the second-to-last row: laser, message, star-line.
+      assert.is_true(lines1[#lines1 - 1]:find("CUSTOM MESSAGE", 1, true) ~= nil)
+      assert.is_true(lines2[#lines2 - 1]:find("CUSTOM MESSAGE", 1, true) ~= nil)
     end)
 
-    it("returns highlight marks covering sparkles, the laser, and the border", function()
+    it("returns highlight marks covering the sparkle rows and the laser", function()
       local _, highlights = celebrate.frame(1, "MSG")
       local groups = {}
       for _, h in ipairs(highlights) do
         groups[h.hl_group] = true
       end
-
-      -- the laser spark now flashes through the same rainbow palette as the sparkle rows,
-      -- rather than a single dedicated color -- just confirm at least one spark color is used.
-      assert.is_true(groups["AlbusConflictiusBorder"])
 
       local has_spark = false
       for _, name in ipairs({
@@ -88,11 +85,11 @@ describe("albus-conflictius.celebrate", function()
 
     it("colors the message text letter-by-letter with multiple distinct colors, not one flat color", function()
       local lines, highlights = celebrate.frame(1, "A LONGER TEST MESSAGE")
-      local message_row = #lines - 1 -- 0-based row index of the last line (the message line)
+      local message_row = #lines - 2 -- 0-based row index of the message (laser, message, star-line)
 
       local colors_on_message_line = {}
       for _, h in ipairs(highlights) do
-        if h.row == message_row and h.hl_group ~= "AlbusConflictiusBorder" then
+        if h.row == message_row then
           colors_on_message_line[h.hl_group] = true
         end
       end
@@ -126,48 +123,49 @@ describe("albus-conflictius.celebrate", function()
         return leading + #trimmed / 2
       end
       local top_center = center_col(lines[1])
-      local laser_row_index = #lines - 2 -- message is last, blank before it, laser before that
+      local laser_row_index = #lines - 2 -- laser, message, star-line
       local laser_center = center_col(lines[laser_row_index])
-      local message_center = center_col(lines[#lines])
+      local message_center = center_col(lines[#lines - 1])
       assert.is_true(math.abs(top_center - laser_center) <= 1)
       assert.is_true(math.abs(top_center - message_center) <= 1)
     end)
 
-    it("centers the sparkle/laser rows against the message even when it's much wider than them", function()
-      -- long enough that the message line (border + text + border) exceeds the laser/sparkle
-      -- width -- this used to clamp their shared reference width, or (in an earlier attempt)
-      -- push the unrelated wizard art out of its authored position. Neither should happen: the
-      -- message becomes the reference width (little to no padding of its own), and the
-      -- laser/sparkle rows pad out to stay centered under it, while the wizard art is untouched.
-      local long_message = string.rep("VERY LONG MESSAGE ", 5)
-      local lines = celebrate.frame(1, long_message)
+    it("sizes the laser, message, and star-line rows to the given width, not a fixed constant", function()
+      local width = 50
+      local lines = celebrate.frame(1, "MSG", width)
+      local laser_row = lines[#lines - 2]
+      local message_row = lines[#lines - 1]
+      local star_row = lines[#lines]
 
-      local message_line = lines[#lines]
-      assert.is_true(#(message_line:match("^( *)")) <= 1)
+      assert.are.equal(width, #laser_row)
+      assert.are.equal(width, #star_row)
+      assert.is_true(#message_row <= width)
 
-      local top_row = lines[1]
-      assert.is_true(#(top_row:match("^( *)")) > 0)
-      assert.is_true(#top_row <= #message_line)
-
-      local banner = require("albus-conflictius.banner")
-      local wizard_first_line = banner.art()[1]
-      local wizard_row
-      for _, line in ipairs(lines) do
-        if line:find(wizard_first_line, 1, true) then
-          wizard_row = line
-        end
-      end
-      assert.are.equal(wizard_first_line, wizard_row)
+      -- a different width produces differently-sized rows -- confirms the width is actually
+      -- threaded through rather than silently falling back to a fixed internal constant.
+      local other_width = 20
+      local other_lines = celebrate.frame(1, "MSG", other_width)
+      assert.are.equal(other_width, #other_lines[#other_lines - 2])
+      assert.are.equal(other_width, #other_lines[#other_lines])
     end)
 
-    it("keeps both sparkle rows solid and exactly as wide as the laser row", function()
-      local lines = celebrate.frame(1, "MSG")
-      local top_content = lines[1]:match("^ *(.-) *$")
-      local bottom_content = lines[2]:match("^ *(.-) *$")
+    it("never clips the message -- it's centered within width regardless of message length", function()
+      local width = 40
+      local short = celebrate.frame(1, "HI", width)
+      local long = celebrate.frame(1, "A FAIRLY LONG CELEBRATION MESSAGE HERE", width)
+      assert.is_true(short[#short - 1]:find("HI", 1, true) ~= nil)
+      assert.is_true(long[#long - 1]:find("A FAIRLY LONG CELEBRATION MESSAGE HERE", 1, true) ~= nil)
+    end)
+
+    it("keeps both sparkle rows solid and exactly as wide as the laser/star-line rows", function()
+      local width = 24
+      local lines = celebrate.frame(1, "MSG", width)
+      local top_content = lines[1]
+      local bottom_content = lines[2]
       assert.is_nil(top_content:find("%s"))
       assert.is_nil(bottom_content:find("%s"))
-      assert.are.equal(33, #top_content)
-      assert.are.equal(33, #bottom_content)
+      assert.are.equal(width, #top_content)
+      assert.are.equal(width, #bottom_content)
     end)
   end)
 
@@ -187,12 +185,12 @@ describe("albus-conflictius.celebrate", function()
   end)
 
   describe("play", function()
-    local function open_scratch_win()
+    local function open_scratch_win(width, height)
       local bufnr = vim.api.nvim_create_buf(false, true)
       local win = vim.api.nvim_open_win(bufnr, true, {
         relative = "editor",
-        width = 10,
-        height = 5,
+        width = width or 10,
+        height = height or 5,
         row = 0,
         col = 0,
         style = "minimal",
@@ -200,33 +198,27 @@ describe("albus-conflictius.celebrate", function()
       return bufnr, win
     end
 
-    it("renders the first frame (with the chosen message) immediately into the buffer", function()
-      local bufnr, win = open_scratch_win()
+    it("renders the first frame (with the chosen message), sized to the window's own width", function()
+      local width = 10
+      local bufnr, win = open_scratch_win(width)
       celebrate.play(bufnr, win, function() end, { total_frames = 1, interval_ms = 10000, message = "PINNED" })
 
       local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-      assert.are.same(celebrate.frame(1, "PINNED"), lines)
+      assert.are.same(celebrate.frame(1, "PINNED", width), lines)
 
       vim.api.nvim_win_close(win, true)
     end)
 
     it("vertically centers the frame with blank padding when the window is taller than the content", function()
-      local frame_lines = celebrate.frame(1, "PINNED")
+      local width = 60
+      local frame_lines = celebrate.frame(1, "PINNED", width)
       local extra = 10
       -- headless Neovim defaults to a 24-line "screen", too short to actually fit
       -- #frame_lines + extra -- give it enough room so the window isn't silently clamped.
       local original_lines = vim.o.lines
       vim.o.lines = #frame_lines + extra + 10
 
-      local bufnr = vim.api.nvim_create_buf(false, true)
-      local win = vim.api.nvim_open_win(bufnr, true, {
-        relative = "editor",
-        width = 60,
-        height = #frame_lines + extra,
-        row = 0,
-        col = 0,
-        style = "minimal",
-      })
+      local bufnr, win = open_scratch_win(width, #frame_lines + extra)
 
       celebrate.play(bufnr, win, function() end, { total_frames = 1, interval_ms = 10000, message = "PINNED" })
 

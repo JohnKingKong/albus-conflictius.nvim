@@ -2,7 +2,7 @@ local M = {}
 
 local banner = require("albus-conflictius.banner")
 
-local LASER_WIDTH = 33
+local DEFAULT_WIDTH = 40
 
 -- These are meant to be vividly colorful regardless of colorscheme (it's fireworks, not a
 -- serious UI element), so they're explicit hex, not Diff*/colorscheme-derived links. `:colorscheme`
@@ -23,7 +23,6 @@ local function apply_colors()
   for idx, group in ipairs(SPARK_HL) do
     vim.api.nvim_set_hl(0, group, { fg = SPARK_COLORS[idx] })
   end
-  vim.api.nvim_set_hl(0, "AlbusConflictiusBorder", { fg = "#d7af5f" })
 end
 
 apply_colors()
@@ -39,47 +38,48 @@ local SPARK_CHARS = { "*", ".", "'", "+", "x", "o" }
 
 local WIZARD_ART = banner.art()
 
--- Centers `width` against `canvas_width`, the widest of the sparkle/laser/message rows in the
--- *current* frame -- not a fixed constant. The message line (border + text + border) can easily
--- be wider than the laser/sparkle rows, and treating a fixed width as the reference clamped its
--- padding to zero whenever that happened, leaving the message flush-left while everything else
--- stayed padded. The wizard art is deliberately left out of this: it's hand-drawn with each
--- line's own leading whitespace baked in as part of the shape (some lines are meant to sit further
--- right than others -- that's the wizard's silhouette, not incidental padding to strip), so it's
--- pasted in as-is, at its own original position, same as before this centering logic existed.
-local function pad_for(canvas_width, width)
-  return string.rep(" ", math.max(0, math.floor((canvas_width - width) / 2)))
-end
-
--- A solid, edge-to-edge row of sparkle characters spanning the full laser width -- "as long as"
--- the laser line, not a scatter of stars with gaps between them. `phase` shifts which character
--- (and color) lands on each column, so two calls with different phases still read as visually
--- distinct rows despite both being fully dense. Returns the row text (centered against
--- canvas_width) plus a list of {col (0-based), hl_group} marks, computed at construction time
--- rather than by re-scanning the rendered text afterward.
-local function sparkle_row(phase, canvas_width)
+-- A solid, edge-to-edge row of sparkle characters spanning the full given width -- no gaps, no
+-- centering needed since it already fills the whole line. `phase` shifts which character (and
+-- color) lands on each column, so two calls with different phases still read as visually distinct
+-- rows despite both being fully dense. Returns the row text plus a list of {col (0-based),
+-- hl_group} marks, computed at construction time rather than by re-scanning the text afterward.
+local function sparkle_row(width, phase)
   local row = {}
   local marks = {}
-  local pad = pad_for(canvas_width, LASER_WIDTH)
-  for pos = 1, LASER_WIDTH do
+  for pos = 1, width do
     local char_index = ((pos + phase - 1) % #SPARK_CHARS) + 1
     row[pos] = SPARK_CHARS[char_index]
-    table.insert(marks, { col = #pad + pos - 1, hl_group = SPARK_HL[((pos + phase - 1) % #SPARK_HL) + 1] })
+    table.insert(marks, { col = pos - 1, hl_group = SPARK_HL[((pos + phase - 1) % #SPARK_HL) + 1] })
   end
-  return pad .. table.concat(row), marks
+  return table.concat(row), marks
 end
 
 -- The moving spark cycles through the same rainbow palette as the sparkle rows (keyed by frame
 -- index) instead of a single fixed color, so it visibly flashes different colors as it sweeps.
-local function laser_row(spark_pos, color_index, canvas_width)
+-- Spans the full given width, edge-to-edge (`|` caps), same as every other row in this banner.
+local function laser_row(width, spark_pos, color_index)
   local row = {}
-  for i = 1, LASER_WIDTH do
-    row[i] = (i == 1 or i == LASER_WIDTH) and "|" or "-"
+  for i = 1, width do
+    row[i] = (i == 1 or i == width) and "|" or "-"
   end
+  spark_pos = math.min(math.max(spark_pos, 1), width)
   row[spark_pos] = "*"
-  local pad = pad_for(canvas_width, LASER_WIDTH)
   local hl_group = SPARK_HL[((color_index - 1) % #SPARK_HL) + 1]
-  return pad .. table.concat(row), { { col = #pad + spark_pos - 1, hl_group = hl_group } }
+  return table.concat(row), { { col = spark_pos - 1, hl_group = hl_group } }
+end
+
+-- A full-width alternating "*~*~*~" bar -- the bottom bookend of the laser/message/star-line
+-- banner, matching the laser row's width exactly so the whole group reads as a uniform block.
+local function star_line_row(width, phase)
+  local chars = { "*", "~" }
+  local row = {}
+  local marks = {}
+  for pos = 1, width do
+    local char_index = ((pos + phase) % 2) + 1
+    row[pos] = chars[char_index]
+    table.insert(marks, { col = pos - 1, hl_group = SPARK_HL[((pos + phase - 1) % #SPARK_HL) + 1] })
+  end
+  return table.concat(row), marks
 end
 
 -- One mark per non-space character, cycling through the rainbow palette -- a proper multicolor
@@ -95,6 +95,10 @@ local function rainbow_marks(text, start_col)
     end
   end
   return marks
+end
+
+local function center_pad(width, content_width)
+  return string.rep(" ", math.max(0, math.floor((width - content_width) / 2)))
 end
 
 M.MESSAGES = {
@@ -113,26 +117,21 @@ function M.frame_count()
   return 8
 end
 
--- Frames are generated, not hand-drawn: two solid, edge-to-edge sparkle rows (same width as the
--- laser, out of phase with each other for variety) and a "laser" row whose spark ping-pongs
--- left-right while flashing through the rainbow palette, around a message whose text is itself
--- multicolor letter-by-letter. The canvas width used to center the sparkle/laser/message group is
--- whichever of those three is widest *this frame* (the message varies in length; the sparkle/laser
--- don't). The wizard art is pasted in as-is, at its own original position -- it's not part of that
--- centering group, since its shape depends on each line's own hand-authored leading whitespace.
--- `message` is fixed for the whole playback (chosen once by `play`/`random_message`), not
--- re-picked per frame. This plays inside the dashboard's own window at its current size, never
--- resized to fit anything.
+-- Frames are generated, not hand-drawn. Two solid sparkle rows sit above the (static) wizard art,
+-- pasted in as-is at its own hand-authored position (its shape depends on each line's own leading
+-- whitespace, so it's never centered/padded like the rest of the frame). Below the wizard is a
+-- tight three-row banner -- a laser row whose spark ping-pongs left-right, the message (plain,
+-- centered, multicolor letter-by-letter), and a star-line bar -- all three spanning exactly
+-- `width` (the real width of the window this plays in), so the message can never get clipped by
+-- being wider than a fixed internal constant. `message` is fixed for the whole playback (chosen
+-- once by `play`/`random_message`), not re-picked per frame. `width` defaults to a fixed constant
+-- only for standalone calls (e.g. tests) made without a real window.
 -- Returns (lines, highlights) -- highlights is a list of {row, col, hl_group} (0-based, single
--- character wide) plus border ranges, applied by `play` as extmarks.
-function M.frame(index, message)
+-- character wide), applied by `play` as extmarks.
+function M.frame(index, message, width)
   message = message or M.MESSAGES[1]
+  width = width or DEFAULT_WIDTH
   local i = ((index - 1) % M.frame_count()) + 1
-
-  local border = (i % 2 == 0) and "*~*~*~*~*~*" or "~*~*~*~*~*~"
-  local message_line = border .. "  " .. message .. "  " .. border
-
-  local canvas_width = math.max(LASER_WIDTH, #message_line)
 
   local lines = {}
   local highlights = {}
@@ -147,9 +146,9 @@ function M.frame(index, message)
     end
   end
 
-  local top, top_marks = sparkle_row(i, canvas_width)
+  local top, top_marks = sparkle_row(width, i)
   push(top, top_marks)
-  local bottom, bottom_marks = sparkle_row(i + 3, canvas_width)
+  local bottom, bottom_marks = sparkle_row(width, i + 3)
   push(bottom, bottom_marks)
   push("")
 
@@ -159,27 +158,21 @@ function M.frame(index, message)
 
   push("")
 
-  local span = LASER_WIDTH - 2
-  local cycle = 2 * span
+  local span = math.max(1, width - 2)
+  local cycle = math.max(2, 2 * span)
   local pos = (i - 1) % cycle
   if pos >= span then
     pos = cycle - pos
   end
-  local laser_line, laser_marks = laser_row(pos + 2, i, canvas_width)
+  local laser_line, laser_marks = laser_row(width, pos + 2, i)
   push(laser_line, laser_marks)
-  push("")
 
-  local pad = pad_for(canvas_width, #message_line)
-  local message_start = #pad + #border + 2
-  local right_border_start = message_start + #message + 2
+  local pad = center_pad(width, #message)
+  local message_marks = rainbow_marks(message, #pad)
+  push(pad .. message, message_marks)
 
-  local message_marks = rainbow_marks(message, message_start)
-  table.insert(message_marks, { col = #pad, hl_group = "AlbusConflictiusBorder", col_end = #pad + #border })
-  table.insert(
-    message_marks,
-    { col = right_border_start, hl_group = "AlbusConflictiusBorder", col_end = right_border_start + #border }
-  )
-  push(pad .. message_line, message_marks)
+  local star_line, star_marks = star_line_row(width, i)
+  push(star_line, star_marks)
 
   return lines, highlights
 end
@@ -225,13 +218,16 @@ end
 -- steps, then calls `on_done`. Any of <CR>/q/<Esc> skips straight to `on_done`. If rendering a
 -- frame ever errors for any reason, that's treated as "done" rather than silently hanging forever
 -- with the caller never finding out. The celebration message is chosen once (random, or
--- `opts.message` for tests) and stays fixed for the whole run.
+-- `opts.message` for tests) and stays fixed for the whole run. The banner rows are sized to the
+-- window's actual width (read once at playback start) so the message is never clipped.
 function M.play(bufnr, win, on_done, opts)
   opts = opts or {}
   local message = opts.message or M.random_message()
   local total_frames = opts.total_frames or (M.frame_count() * 5)
   local interval_ms = opts.interval_ms or 150
-  local window_height = vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_height(win) or 0
+  local window_valid = vim.api.nvim_win_is_valid(win)
+  local window_height = window_valid and vim.api.nvim_win_get_height(win) or 0
+  local window_width = window_valid and vim.api.nvim_win_get_width(win) or DEFAULT_WIDTH
 
   local stopped = false
   local skip_keys = { "<CR>", "q", "<Esc>" }
@@ -247,7 +243,7 @@ function M.play(bufnr, win, on_done, opts)
     on_done()
   end
 
-  if vim.api.nvim_win_is_valid(win) then
+  if window_valid then
     local skip_opts = { buffer = bufnr, silent = true, nowait = true }
     for _, key in ipairs(skip_keys) do
       vim.keymap.set("n", key, finish, skip_opts)
@@ -264,7 +260,7 @@ function M.play(bufnr, win, on_done, opts)
     end
 
     local ok = pcall(function()
-      local lines, highlights = M.frame(index, message)
+      local lines, highlights = M.frame(index, message, window_width)
       lines, highlights = center_vertically(lines, highlights, window_height)
       vim.bo[bufnr].modifiable = true
       vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
