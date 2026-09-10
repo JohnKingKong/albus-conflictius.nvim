@@ -17,7 +17,14 @@ function M._reset_run_fn()
   run_fn = default_run_fn
 end
 
+-- `vim.fn.getcwd()` can return an empty string if the process's working directory has been
+-- removed out from under it (e.g. the directory was deleted while Neovim was still open in it) --
+-- vim.system throws on an invalid cwd, so guard here rather than let every caller crash.
 function M.run(cwd, args)
+  if not cwd or cwd == "" then
+    return { code = 1, stdout = "", stderr = "albus-conflictius: invalid cwd" }
+  end
+
   local cmd = { "git" }
   for _, arg in ipairs(args) do
     table.insert(cmd, arg)

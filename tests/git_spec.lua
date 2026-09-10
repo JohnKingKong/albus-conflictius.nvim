@@ -32,6 +32,32 @@ describe("albus-conflictius.git", function()
       assert.are.equal(0, result.code)
       assert.are.equal("ok\n", result.stdout)
     end)
+
+    it("fails fast without calling run_fn when cwd is an empty string", function()
+      local called = false
+      stub(function()
+        called = true
+        return { code = 0, stdout = "", stderr = "" }
+      end)
+
+      local result = git.run("", { "status" })
+
+      assert.is_false(called)
+      assert.are.equal(1, result.code)
+    end)
+
+    it("fails fast without calling run_fn when cwd is nil", function()
+      local called = false
+      stub(function()
+        called = true
+        return { code = 0, stdout = "", stderr = "" }
+      end)
+
+      local result = git.run(nil, { "status" })
+
+      assert.is_false(called)
+      assert.are.equal(1, result.code)
+    end)
   end)
 
   describe("git_dir", function()
