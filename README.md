@@ -18,7 +18,7 @@ Resolving a git conflict usually means opening each file, scanning past the conf
 4. The wand resolves each hunk where only one side actually changed relative to the merge base (or both sides converged on the same result) — it reads this straight from the conflict markers themselves, so it needs `merge.conflictstyle = diff3`, which the plugin sets on the repo automatically the first time `setup()` runs.
 5. Hunks where both sides genuinely changed different things are left alone. Opening that file from the dashboard (`<CR>`) drops the cursor on the first remaining conflict, with the "ours"/"theirs" side of each hunk background-highlighted so they're visually distinct. Pressing `<CR>` accepts whichever side the cursor's line is on — same idea everywhere, single-pane or 3-pane. There are also explicit keymaps: `<leader>co` accept ours, `<leader>ct` accept theirs, `<leader>cb` accept both, `<leader>cn`/`<leader>cp` jump to the next/previous conflict, `<leader>cw` run the wand right there on the buffer (no need to go back to the dashboard). No diff panes to decode by default — you're just looking at your real file. For the harder cases, `<leader>cd` opens a 3-pane view — **ours** (left) | **result** (middle, your real file) | **theirs** (right) — where `<CR>` in either side pane accepts that side for the hunk under the cursor there. `q` closes the panes (non-destructive, `<leader>cd` reopens them), or the whole view if they're already closed — with a confirmation prompt only if conflicts still remain.
 6. The moment a file has zero remaining conflict markers — whether the wand cleared it or you finished it by hand — it's automatically `git add`ed on save, and its tab closes, returning you to the dashboard (rather than leaving you looking at a finished file while the dashboard updates somewhere you can't see).
-7. When the *last* conflicted file in the repo gets resolved, the dashboard throws a little party — a short ASCII animation (fireworks, a sweeping laser, the wizard) plays in the dashboard window before it closes. Press `<CR>`/`q`/`<Esc>` to skip it, or turn it off entirely with `celebrate = false`.
+7. When the *last* conflicted file in the repo gets resolved, the dashboard throws a little party — colorful fireworks, a sweeping laser, the wizard mirror-flipping in place, and a whimsical banner (picked once at random, e.g. "ALAKAZAM! ALL CONFLICTS VANISHED!") play in the dashboard window before it closes. Press `<CR>`/`q`/`<Esc>` to skip it, or turn it off entirely with `celebrate = false`.
 
 **This is not a git client.** Continuing the rebase/merge and committing is left to lazygit or the CLI, same as before.
 
@@ -88,7 +88,7 @@ Commands: `:AlbusConflictius` (open the dashboard now), `:AlbusConflictiusHelp` 
 
 **`lua/albus-conflictius/banner.lua`** — the wizard art and help window
 
-**`lua/albus-conflictius/celebrate.lua`** — the fireworks/laser ASCII animation played when the last conflict is resolved
+**`lua/albus-conflictius/celebrate.lua`** — the colorful fireworks/laser/mirror-flip ASCII animation played when the last conflict is resolved
 
 **`plugin/albus-conflictius.lua`** — registers `:AlbusConflictius`, `:AlbusConflictiusHelp`
 
