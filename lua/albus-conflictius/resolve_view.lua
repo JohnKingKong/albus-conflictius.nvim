@@ -279,7 +279,7 @@ local function close_diff_panes(handle)
   vim.api.nvim_set_current_win(handle.main_win)
 end
 
--- q closes the diff panes if open (non-destructive -- <leader>cd reopens them any time); with the
+-- q closes the diff panes if open (non-destructive -- <leader>md reopens them any time); with the
 -- panes already closed, it closes the whole view, confirming first only if conflicts remain.
 local function quit(handle)
   if handle.diff_open then
@@ -314,10 +314,10 @@ local function open_side_pane(handle, side, split_cmd)
   vim.keymap.set("n", "<CR>", function()
     accept_from_side(handle, side)
   end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept this side (" .. side .. ")" }))
-  vim.keymap.set("n", "<leader>cn", function()
+  vim.keymap.set("n", "<leader>mn", function()
     jump_hunk(handle.main_bufnr, handle.main_win, "next")
   end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: next conflict" }))
-  vim.keymap.set("n", "<leader>cp", function()
+  vim.keymap.set("n", "<leader>mp", function()
     jump_hunk(handle.main_bufnr, handle.main_win, "prev")
   end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: previous conflict" }))
   vim.keymap.set("n", "q", function()
@@ -358,25 +358,25 @@ function M.open(cwd, path, opts)
   vim.keymap.set("n", "<CR>", function()
     accept_at_cursor(handle)
   end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept whichever side the cursor is on" }))
-  vim.keymap.set("n", "<leader>co", function()
+  vim.keymap.set("n", "<leader>mo", function()
     accept_hunk(handle, "ours")
   end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept ours" }))
-  vim.keymap.set("n", "<leader>ct", function()
+  vim.keymap.set("n", "<leader>mt", function()
     accept_hunk(handle, "theirs")
   end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept theirs" }))
-  vim.keymap.set("n", "<leader>cb", function()
+  vim.keymap.set("n", "<leader>mb", function()
     accept_hunk(handle, "both")
   end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept both" }))
-  vim.keymap.set("n", "<leader>cn", function()
+  vim.keymap.set("n", "<leader>mn", function()
     jump_hunk(main_bufnr, main_win, "next")
   end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: next conflict" }))
-  vim.keymap.set("n", "<leader>cp", function()
+  vim.keymap.set("n", "<leader>mp", function()
     jump_hunk(main_bufnr, main_win, "prev")
   end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: previous conflict" }))
-  vim.keymap.set("n", "<leader>cw", function()
+  vim.keymap.set("n", "<leader>mw", function()
     wand_buffer(handle)
   end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: run the wand on this file" }))
-  vim.keymap.set("n", "<leader>cd", function()
+  vim.keymap.set("n", "<leader>md", function()
     if handle.diff_open then
       close_diff_panes(handle)
     else
@@ -401,8 +401,8 @@ function M.open(cwd, path, opts)
   vim.notify(
     "albus-conflictius: resolving "
       .. path
-      .. " -- <CR> accept side under cursor, <leader>co/ct/cb accept ours/theirs/both, "
-      .. "<leader>cn/cp next/prev, <leader>cw wand this file, <leader>cd ours|result|theirs view, q close",
+      .. " -- <CR> accept side under cursor, <leader>mo/mt/mb accept ours/theirs/both, "
+      .. "<leader>mn/mp next/prev, <leader>mw wand this file, <leader>md ours|result|theirs view, q close",
     vim.log.levels.INFO
   )
 

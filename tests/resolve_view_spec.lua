@@ -79,33 +79,33 @@ describe("albus-conflictius.resolve_view", function()
     vim.cmd("tabclose!")
   end)
 
-  it("<leader>co accepts ours for the hunk under the cursor", function()
+  it("<leader>mo accepts ours for the hunk under the cursor", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
 
     local handle = resolve_view.open(tmpdir, "conflict.txt", {})
-    feed(handle.main_win, "<leader>co")
+    feed(handle.main_win, "<leader>mo")
 
     assert.are.equal("ours line", buf_content(handle.main_bufnr))
 
     vim.cmd("tabclose!")
   end)
 
-  it("<leader>ct accepts theirs for the hunk under the cursor", function()
+  it("<leader>mt accepts theirs for the hunk under the cursor", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
 
     local handle = resolve_view.open(tmpdir, "conflict.txt", {})
-    feed(handle.main_win, "<leader>ct")
+    feed(handle.main_win, "<leader>mt")
 
     assert.are.equal("theirs line", buf_content(handle.main_bufnr))
 
     vim.cmd("tabclose!")
   end)
 
-  it("<leader>cb accepts both, ours then theirs", function()
+  it("<leader>mb accepts both, ours then theirs", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
 
     local handle = resolve_view.open(tmpdir, "conflict.txt", {})
-    feed(handle.main_win, "<leader>cb")
+    feed(handle.main_win, "<leader>mb")
 
     assert.are.equal("ours line\ntheirs line", buf_content(handle.main_bufnr))
 
@@ -132,7 +132,7 @@ describe("albus-conflictius.resolve_view", function()
     )
 
     local handle = resolve_view.open(tmpdir, "conflict.txt", {})
-    feed(handle.main_win, "<leader>co")
+    feed(handle.main_win, "<leader>mo")
 
     -- first hunk collapsed to 1 line ("a-ours"), so the second hunk's <<<<<<< now starts at line 3
     assert.are.equal(3, vim.api.nvim_win_get_cursor(handle.main_win)[1])
@@ -140,7 +140,7 @@ describe("albus-conflictius.resolve_view", function()
     vim.cmd("tabclose!")
   end)
 
-  it("<leader>cn / <leader>cp navigate between multiple hunks without resolving them", function()
+  it("<leader>mn / <leader>mp navigate between multiple hunks without resolving them", function()
     write_file(
       "conflict.txt",
       table.concat({
@@ -160,23 +160,23 @@ describe("albus-conflictius.resolve_view", function()
     )
 
     local handle = resolve_view.open(tmpdir, "conflict.txt", {})
-    feed(handle.main_win, "<leader>cn")
+    feed(handle.main_win, "<leader>mn")
     assert.are.equal(7, vim.api.nvim_win_get_cursor(handle.main_win)[1])
 
-    feed(handle.main_win, "<leader>cp")
+    feed(handle.main_win, "<leader>mp")
     assert.are.equal(1, vim.api.nvim_win_get_cursor(handle.main_win)[1])
 
     vim.cmd("tabclose!")
   end)
 
-  it("<leader>cd opens ours (left) | result (middle) | theirs (right)", function()
+  it("<leader>md opens ours (left) | result (middle) | theirs (right)", function()
     write_file(
       "conflict.txt",
       table.concat({ "top", "<<<<<<< HEAD", "a-ours", "=======", "a-theirs", ">>>>>>> branch", "middle" }, "\n")
     )
 
     local handle = resolve_view.open(tmpdir, "conflict.txt", {})
-    feed(handle.main_win, "<leader>cd")
+    feed(handle.main_win, "<leader>md")
 
     assert.is_true(handle.diff_open)
     assert.is_true(vim.api.nvim_win_is_valid(handle.ours_win))
@@ -192,7 +192,7 @@ describe("albus-conflictius.resolve_view", function()
     assert.are.equal("top\na-theirs\nmiddle", buf_content(handle.theirs_bufnr))
     assert.is_true(buf_content(handle.main_bufnr):find("<<<<<<<", 1, true) ~= nil)
 
-    feed(handle.main_win, "<leader>cd")
+    feed(handle.main_win, "<leader>md")
     assert.is_false(handle.diff_open)
 
     vim.cmd("tabclose!")
@@ -202,7 +202,7 @@ describe("albus-conflictius.resolve_view", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
 
     local handle = resolve_view.open(tmpdir, "conflict.txt", {})
-    feed(handle.main_win, "<leader>cd")
+    feed(handle.main_win, "<leader>md")
 
     vim.api.nvim_win_set_cursor(handle.ours_win, { 1, 0 })
     feed(handle.ours_win, "<CR>")
@@ -218,7 +218,7 @@ describe("albus-conflictius.resolve_view", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
 
     local handle = resolve_view.open(tmpdir, "conflict.txt", {})
-    feed(handle.main_win, "<leader>cd")
+    feed(handle.main_win, "<leader>md")
 
     vim.api.nvim_win_set_cursor(handle.theirs_win, { 1, 0 })
     feed(handle.theirs_win, "<CR>")
@@ -247,7 +247,7 @@ describe("albus-conflictius.resolve_view", function()
     vim.cmd("tabclose!")
   end)
 
-  it("<leader>cw runs the wand on the buffer without touching disk", function()
+  it("<leader>mw runs the wand on the buffer without touching disk", function()
     write_file(
       "conflict.txt",
       table.concat({
@@ -262,7 +262,7 @@ describe("albus-conflictius.resolve_view", function()
     )
 
     local handle = resolve_view.open(tmpdir, "conflict.txt", {})
-    feed(handle.main_win, "<leader>cw")
+    feed(handle.main_win, "<leader>mw")
 
     assert.are.equal("changed", buf_content(handle.main_bufnr))
 
@@ -289,14 +289,14 @@ describe("albus-conflictius.resolve_view", function()
     )
 
     local handle = resolve_view.open(tmpdir, "conflict.txt", {})
-    feed(handle.main_win, "<leader>cd")
+    feed(handle.main_win, "<leader>md")
     assert.is_true(handle.diff_open)
 
     feed(handle.main_win, "q")
     assert.is_false(handle.diff_open)
     assert.is_true(vim.api.nvim_win_is_valid(handle.main_win))
 
-    feed(handle.main_win, "<leader>cw")
+    feed(handle.main_win, "<leader>mw")
     feed(handle.main_win, "q")
     assert.is_false(vim.api.nvim_win_is_valid(handle.main_win))
   end)
