@@ -3,20 +3,24 @@ local M = {}
 local uv = vim.uv or vim.loop
 
 local last_seen_by_repo = {}
-local fs_event_handle = nil
+-- Keyed by git_dir, not a single handle: an earlier version replaced this on
+-- every DirChanged, so switching between fireplaces silently stopped
+-- watching every repo except whichever one was most recently visited.
+local fs_event_handles = {}
 
 function M._reset_state()
   last_seen_by_repo = {}
+  for _, handle in pairs(fs_event_handles) do
+    pcall(handle.stop, handle)
+  end
+  fs_event_handles = {}
 end
 
-function M._check(git_mod, cwd, on_new_conflicts)
-  if not git_mod.in_progress(cwd) then
-    last_seen_by_repo[cwd] = nil
-    return
-  end
-
-  local files = git_mod.conflicted_files(cwd)
-  if #files == 0 then
+-- Pure dedup logic, given already-fetched state -- kept synchronous (and
+-- thus easy to unit test with a plain fake git module) even though real
+-- callers fetch `in_progress`/`files` asynchronously via _check_async below.
+local function apply_check(cwd, in_progress, files, on_new_conflicts)
+  if not in_progress or #files == 0 then
     last_seen_by_repo[cwd] = nil
     return
   end
@@ -29,42 +33,81 @@ function M._check(git_mod, cwd, on_new_conflicts)
     return
   end
   last_seen_by_repo[cwd] = signature
-  on_new_conflicts(files)
+  on_new_conflicts(files, cwd)
 end
 
-local function arm_fs_watcher(git_mod, on_new_conflicts)
-  if fs_event_handle then
-    fs_event_handle:stop()
-    fs_event_handle = nil
-  end
+function M._check(git_mod, cwd, on_new_conflicts)
+  apply_check(cwd, git_mod.in_progress(cwd), git_mod.conflicted_files(cwd), on_new_conflicts)
+end
 
-  local cwd = vim.fn.getcwd()
-  local git_dir = git_mod.git_dir(cwd)
-  if not git_dir then
-    return
-  end
-
-  local handle = uv.new_fs_event()
-  if not handle then
-    return
-  end
-  fs_event_handle = handle
-
-  local debounce_timer = nil
-  handle:start(git_dir, {}, function()
-    if debounce_timer then
-      debounce_timer:stop()
-      debounce_timer:close()
+-- Same as _check, but via git_mod's non-blocking variants -- used at every
+-- real call site so a check triggered by FocusGained/a background fs event
+-- never freezes the editor waiting on a `git` subprocess (most noticeable on
+-- a large repo).
+function M._check_async(git_mod, cwd, on_new_conflicts)
+  git_mod.in_progress_async(cwd, function(in_progress)
+    if not in_progress then
+      apply_check(cwd, false, {}, on_new_conflicts)
+      return
     end
-    debounce_timer = uv.new_timer()
-    debounce_timer:start(
-      50,
-      0,
-      vim.schedule_wrap(function()
-        M._check(git_mod, vim.fn.getcwd(), on_new_conflicts)
-      end)
-    )
+    git_mod.conflicted_files_async(cwd, function(files)
+      apply_check(cwd, true, files, on_new_conflicts)
+    end)
   end)
+end
+
+-- Every open tab's own working directory, deduplicated -- not just "the
+-- current" one, so a fireplace you're not currently looking at still gets
+-- checked (its conflicts don't just sit undetected until you happen to
+-- switch back to it).
+local function all_tab_cwds()
+  local cwds, seen = {}, {}
+  for _, tabid in ipairs(vim.api.nvim_list_tabpages()) do
+    local tabnr = vim.api.nvim_tabpage_get_number(tabid)
+    local cwd = vim.fn.getcwd(-1, tabnr)
+    if not seen[cwd] then
+      seen[cwd] = true
+      table.insert(cwds, cwd)
+    end
+  end
+  return cwds
+end
+
+local function arm_fs_watcher(git_mod, on_new_conflicts, cwd)
+  git_mod.git_dir_async(cwd, function(git_dir)
+    if not git_dir or fs_event_handles[git_dir] then
+      return
+    end
+
+    local handle = uv.new_fs_event()
+    if not handle then
+      return
+    end
+    fs_event_handles[git_dir] = handle
+
+    local debounce_timer = nil
+    handle:start(git_dir, {}, function()
+      if debounce_timer then
+        debounce_timer:stop()
+        debounce_timer:close()
+      end
+      debounce_timer = uv.new_timer()
+      debounce_timer:start(
+        50,
+        0,
+        vim.schedule_wrap(function()
+          M._check_async(git_mod, cwd, on_new_conflicts)
+        end)
+      )
+    end)
+  end)
+end
+
+local function check_and_arm_all(git_mod, on_new_conflicts)
+  for _, cwd in ipairs(all_tab_cwds()) do
+    M._check_async(git_mod, cwd, on_new_conflicts)
+    arm_fs_watcher(git_mod, on_new_conflicts, cwd)
+  end
 end
 
 -- Deferred so our dashboard wins any focus race with other startup UI that opens on VimEnter
@@ -73,7 +116,7 @@ end
 -- stolen the moment VimEnter-time plugins finish opening their own windows afterward.
 local function initial_check(git_mod, on_new_conflicts)
   vim.defer_fn(function()
-    M._check(git_mod, vim.fn.getcwd(), on_new_conflicts)
+    check_and_arm_all(git_mod, on_new_conflicts)
   end, 100)
 end
 
@@ -86,7 +129,9 @@ function M.setup(on_new_conflicts, opts)
   vim.api.nvim_create_autocmd({ "FocusGained", "VimResume" }, {
     group = augroup,
     callback = function()
-      M._check(git_mod, vim.fn.getcwd(), on_new_conflicts)
+      for _, cwd in ipairs(all_tab_cwds()) do
+        M._check_async(git_mod, cwd, on_new_conflicts)
+      end
     end,
     desc = "albus-conflictius: check for conflicts on focus",
   })
@@ -94,8 +139,9 @@ function M.setup(on_new_conflicts, opts)
   vim.api.nvim_create_autocmd("DirChanged", {
     group = augroup,
     callback = function()
-      M._check(git_mod, vim.fn.getcwd(), on_new_conflicts)
-      arm_fs_watcher(git_mod, on_new_conflicts)
+      local cwd = vim.fn.getcwd()
+      M._check_async(git_mod, cwd, on_new_conflicts)
+      arm_fs_watcher(git_mod, on_new_conflicts, cwd)
     end,
     desc = "albus-conflictius: check for conflicts on cwd change",
   })
@@ -113,7 +159,7 @@ function M.setup(on_new_conflicts, opts)
     })
   end
 
-  arm_fs_watcher(git_mod, on_new_conflicts)
+  check_and_arm_all(git_mod, on_new_conflicts)
 end
 
 return M

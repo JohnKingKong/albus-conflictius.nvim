@@ -301,7 +301,7 @@ describe("albus-conflictius.init", function()
       })
 
       albus.setup({ banner = true })
-      on_new_conflicts({ "a.txt" })
+      on_new_conflicts({ "a.txt" }, tmpdir)
 
       assert.is_true(captured_show_banner)
     end)
@@ -325,9 +325,42 @@ describe("albus-conflictius.init", function()
       })
 
       albus.setup({ banner = false })
-      on_new_conflicts({ "a.txt" })
+      on_new_conflicts({ "a.txt" }, tmpdir)
 
       assert.is_false(captured_show_banner)
+    end)
+
+    it("notifies instead of opening when the conflict is in a different fireplace's cwd", function()
+      local opened = false
+      local notified
+      local on_new_conflicts
+      albus._set_git({ ensure_diff3_style = function() end })
+      albus._set_watcher({
+        setup = function(callback)
+          on_new_conflicts = callback
+        end,
+      })
+      albus._set_dashboard({
+        open = function()
+          opened = true
+          return { win = -1, bufnr = -1 }
+        end,
+        refresh = function() end,
+        close = function() end,
+      })
+
+      albus.setup({})
+      local original_notify = vim.notify
+      vim.notify = function(msg, level)
+        notified = { msg = msg, level = level }
+      end
+      on_new_conflicts({ "a.txt" }, tmpdir .. "-other-fireplace")
+      vim.notify = original_notify
+
+      assert.is_false(opened, "dashboard must not open for a different fireplace's conflicts")
+      assert.is_not_nil(notified)
+      assert.are.equal(vim.log.levels.WARN, notified.level)
+      assert.is_true(notified.msg:find("switch there", 1, true) ~= nil)
     end)
   end)
 

@@ -78,4 +78,43 @@ describe("albus-conflictius.watcher", function()
     end)
     assert.are.same({ "a.lua" }, received)
   end)
+
+  describe("_check_async", function()
+    local function fake_git_async(in_progress, files)
+      return {
+        in_progress_async = function(_cwd, callback)
+          callback(in_progress)
+        end,
+        conflicted_files_async = function(_cwd, callback)
+          callback(files)
+        end,
+      }
+    end
+
+    it("fires with both files and cwd for a newly-detected conflict set", function()
+      local received_files, received_cwd
+      watcher._check_async(fake_git_async(true, { "a.lua" }), "/repo", function(files, cwd)
+        received_files, received_cwd = files, cwd
+      end)
+      assert.are.same({ "a.lua" }, received_files)
+      assert.are.equal("/repo", received_cwd)
+    end)
+
+    it("does not fire when nothing is in progress", function()
+      local called = false
+      watcher._check_async(fake_git_async(false, {}), "/repo", function()
+        called = true
+      end)
+      assert.is_false(called)
+    end)
+
+    it("shares dedup state with the synchronous _check for the same repo", function()
+      watcher._check(fake_git(true, { "a.lua" }), "/repo", function() end)
+      local called = false
+      watcher._check_async(fake_git_async(true, { "a.lua" }), "/repo", function()
+        called = true
+      end)
+      assert.is_false(called, "async check must not re-fire for a set _check already saw")
+    end)
+  end)
 end)

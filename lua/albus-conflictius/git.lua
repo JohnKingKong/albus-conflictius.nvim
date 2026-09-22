@@ -83,6 +83,90 @@ function M.conflicted_files(cwd)
   return files
 end
 
+-- Non-blocking counterparts of run/in_progress/conflicted_files, for call
+-- sites that run on frequent/background events (FocusGained, fs-watcher
+-- callbacks) where a synchronous `git` subprocess would otherwise freeze
+-- the editor on every trigger -- most noticeably on a large repo.
+local async_run_fn = function(cmd, opts, callback)
+  vim.system(cmd, { cwd = opts.cwd, text = true }, function(result)
+    vim.schedule(function()
+      callback({ code = result.code, stdout = result.stdout or "", stderr = result.stderr or "" })
+    end)
+  end)
+end
+
+function M._set_async_run_fn(fn)
+  async_run_fn = fn
+end
+
+function M._reset_async_run_fn()
+  async_run_fn = function(cmd, opts, callback)
+    vim.system(cmd, { cwd = opts.cwd, text = true }, function(result)
+      vim.schedule(function()
+        callback({ code = result.code, stdout = result.stdout or "", stderr = result.stderr or "" })
+      end)
+    end)
+  end
+end
+
+function M.run_async(cwd, args, callback)
+  if not cwd or cwd == "" then
+    callback({ code = 1, stdout = "", stderr = "albus-conflictius: invalid cwd" })
+    return
+  end
+  local cmd = { "git" }
+  for _, arg in ipairs(args) do
+    table.insert(cmd, arg)
+  end
+  async_run_fn(cmd, { cwd = cwd }, callback)
+end
+
+function M.git_dir_async(cwd, callback)
+  M.run_async(cwd, { "rev-parse", "--git-dir" }, function(result)
+    if result.code ~= 0 then
+      callback(nil)
+      return
+    end
+    local dir = trim(result.stdout)
+    if dir == "" then
+      callback(nil)
+      return
+    end
+    if dir:sub(1, 1) ~= "/" then
+      dir = cwd .. "/" .. dir
+    end
+    callback(dir)
+  end)
+end
+
+function M.in_progress_async(cwd, callback)
+  M.git_dir_async(cwd, function(git_dir)
+    if not git_dir then
+      callback(false)
+      return
+    end
+    for _, marker in ipairs(IN_PROGRESS_MARKERS) do
+      if uv.fs_stat(git_dir .. "/" .. marker) then
+        callback(true)
+        return
+      end
+    end
+    callback(false)
+  end)
+end
+
+function M.conflicted_files_async(cwd, callback)
+  M.run_async(cwd, { "diff", "--name-only", "--diff-filter=U" }, function(result)
+    local files = {}
+    if result.code == 0 then
+      for line in result.stdout:gmatch("[^\n]+") do
+        table.insert(files, line)
+      end
+    end
+    callback(files)
+  end)
+end
+
 local DIFF3_STYLES = { diff3 = true, zdiff3 = true }
 
 function M.ensure_diff3_style(cwd)

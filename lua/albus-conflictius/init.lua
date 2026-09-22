@@ -185,7 +185,23 @@ function M.open()
   open_dashboard(files, false)
 end
 
-local function auto_open(files)
+-- Only auto-opens the dashboard when the conflicts are in the fireplace
+-- you're actually looking at right now. albus-conflictius has no concept of
+-- "fireplaces" itself, but a background watcher can legitimately fire for a
+-- *different* tab's repo (e.g. another fireplace's git dir changed while you
+-- were elsewhere) -- silently opening the dashboard there, and later
+-- resolve_view's `tabnew`/`tabclose`, would land relative to whatever tab
+-- you happened to be in, not the one the conflict is actually about. Notify
+-- instead so you know to go check, rather than risk the dashboard/resolve
+-- view operating in the wrong workspace.
+local function auto_open(files, conflict_cwd)
+  if conflict_cwd and conflict_cwd ~= vim.fn.getcwd() then
+    vim.notify(
+      string.format("albus-conflictius: conflicts detected in %s -- switch there to resolve", conflict_cwd),
+      vim.log.levels.WARN
+    )
+    return
+  end
   open_dashboard(files, config.get().banner)
 end
 
