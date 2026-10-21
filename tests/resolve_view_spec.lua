@@ -79,6 +79,32 @@ describe("albus-conflictius.resolve_view", function()
     vim.cmd("tabclose!")
   end)
 
+  it(
+    "recovers when the buffer reopens in a different window after the original closes (regression for E5108)",
+    function()
+      write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
+      local handle = resolve_view.open(tmpdir, "conflict.txt", {})
+
+      -- Simulate the original window closing by some means other than this
+      -- plugin's own q/<leader>md (e.g. a plain :close, or some other
+      -- plugin), then the same buffer getting reopened in a brand-new
+      -- window (e.g. via a file explorer) -- handle.main_win is now stale.
+      vim.cmd("vsplit")
+      local new_win = vim.api.nvim_get_current_win()
+      vim.api.nvim_win_set_buf(new_win, handle.main_bufnr)
+      local stale_win = handle.main_win
+      vim.api.nvim_win_close(stale_win, true)
+
+      vim.api.nvim_win_set_cursor(new_win, { 2, 0 }) -- "ours line"
+      feed(new_win, "<CR>") -- must not throw E5108
+
+      assert.are.equal("ours line", buf_content(handle.main_bufnr))
+      assert.are.equal(new_win, handle.main_win, "main_win should self-heal to the window the keymap actually fired in")
+
+      vim.cmd("tabclose!")
+    end
+  )
+
   it("<leader>mo accepts ours for the hunk under the cursor", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
 

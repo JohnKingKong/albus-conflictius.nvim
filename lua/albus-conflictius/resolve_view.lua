@@ -50,7 +50,19 @@ local function highlight_hunks(bufnr)
   end
 end
 
+-- A tracked window (handle.main_win, a side pane's win) can go stale if the
+-- user closes it by some means other than this plugin's own q/<leader>md
+-- (e.g. a plain :close) -- nvim_win_get_cursor/set_cursor throw "Invalid
+-- window id" on a stale one rather than erroring gracefully, so every
+-- direct cursor read/write below checks this first.
+local function win_is_usable(win)
+  return win ~= nil and vim.api.nvim_win_is_valid(win)
+end
+
 local function hunk_at_cursor(bufnr, win)
+  if not win_is_usable(win) then
+    return nil
+  end
   local cursor_line = vim.api.nvim_win_get_cursor(win)[1]
   for _, hunk in ipairs(current_hunks(bufnr)) do
     if cursor_line >= hunk.start_idx and cursor_line <= hunk.end_idx then
@@ -67,6 +79,9 @@ local function jump_to_first_hunk(bufnr, win)
   if #hunks == 0 then
     return false
   end
+  if not win_is_usable(win) then
+    return false
+  end
   vim.api.nvim_win_set_cursor(win, { hunks[1].start_idx, 0 })
   return true
 end
@@ -75,6 +90,10 @@ local function jump_hunk(bufnr, win, direction)
   local hunks = current_hunks(bufnr)
   if #hunks == 0 then
     vim.notify("albus-conflictius: no conflict markers remain", vim.log.levels.INFO)
+    return
+  end
+  if not win_is_usable(win) then
+    vim.notify("albus-conflictius: that conflict resolution window was closed", vim.log.levels.WARN)
     return
   end
 
@@ -200,6 +219,10 @@ end
 -- but for the single result pane: the hunk's ours/theirs text is right there in the buffer, so the
 -- cursor's line alone (not which pane it's in) tells us which side to accept.
 local function accept_at_cursor(handle)
+  if not win_is_usable(handle.main_win) then
+    vim.notify("albus-conflictius: the conflict resolution window was closed", vim.log.levels.WARN)
+    return
+  end
   local cursor_line = vim.api.nvim_win_get_cursor(handle.main_win)[1]
   for index, hunk in ipairs(current_hunks(handle.main_bufnr)) do
     if cursor_line >= hunk.start_idx and cursor_line <= hunk.end_idx then
@@ -225,6 +248,10 @@ end
 local function accept_from_side(handle, side)
   local win = side == "ours" and handle.ours_win or handle.theirs_win
   local line_hunks = side == "ours" and handle.ours_line_hunks or handle.theirs_line_hunks
+  if not win_is_usable(win) then
+    vim.notify("albus-conflictius: that diff pane was closed", vim.log.levels.WARN)
+    return
+  end
   local cursor_line = vim.api.nvim_win_get_cursor(win)[1]
   local hunk_index = line_hunks and line_hunks[cursor_line]
   if not hunk_index then
@@ -276,7 +303,11 @@ local function close_diff_panes(handle)
   handle.theirs_bufnr, handle.theirs_win = nil, nil
   handle.ours_line_hunks, handle.theirs_line_hunks = nil, nil
   handle.diff_open = false
-  vim.api.nvim_set_current_win(handle.main_win)
+  -- Best-effort: this can be reached via a side pane's own q keymap, which
+  -- (unlike the main buffer's keymaps) doesn't refresh handle.main_win, so
+  -- it may be stale if the main window was closed by some other means while
+  -- the diff view was open. Not worth failing the rest of this cleanup over.
+  pcall(vim.api.nvim_set_current_win, handle.main_win)
 end
 
 -- q closes the diff panes if open (non-destructive -- <leader>md reopens them any time); with the
@@ -354,38 +385,100 @@ function M.open(cwd, path, opts)
     diff_open = false,
   }
 
-  local keymap_opts = { buffer = main_bufnr, silent = true }
-  vim.keymap.set("n", "<CR>", function()
-    accept_at_cursor(handle)
-  end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept whichever side the cursor is on" }))
-  vim.keymap.set("n", "<leader>mo", function()
-    accept_hunk(handle, "ours")
-  end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept ours" }))
-  vim.keymap.set("n", "<leader>mt", function()
-    accept_hunk(handle, "theirs")
-  end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept theirs" }))
-  vim.keymap.set("n", "<leader>mb", function()
-    accept_hunk(handle, "both")
-  end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept both" }))
-  vim.keymap.set("n", "<leader>mn", function()
-    jump_hunk(main_bufnr, main_win, "next")
-  end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: next conflict" }))
-  vim.keymap.set("n", "<leader>mp", function()
-    jump_hunk(main_bufnr, main_win, "prev")
-  end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: previous conflict" }))
-  vim.keymap.set("n", "<leader>mw", function()
-    wand_buffer(handle)
-  end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: run the wand on this file" }))
-  vim.keymap.set("n", "<leader>md", function()
-    if handle.diff_open then
-      close_diff_panes(handle)
-    else
-      open_diff_panes(handle)
+  -- handle.main_win is only ever set here at open() time; a buffer-local
+  -- keymap fires wherever that buffer is CURRENTLY shown, which doesn't have
+  -- to be the same window forever (e.g. the user closes this window and
+  -- reopens the buffer elsewhere via a file explorer or :buffer). Without
+  -- this, every handler below reads a stale, possibly-closed window id and
+  -- nvim_win_get_cursor/nvim_win_set_cursor throw "Invalid window id"
+  -- (confirmed: this is exactly what crashed accept_at_cursor). Refreshing
+  -- it to the actual current window right as each keymap fires is always
+  -- correct, since a buffer-local keymap only fires when its buffer is the
+  -- current buffer of the current window.
+  local function on_main_buf(fn)
+    return function()
+      handle.main_win = vim.api.nvim_get_current_win()
+      fn()
     end
-  end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: toggle ours/result/theirs diff view" }))
-  vim.keymap.set("n", "q", function()
-    quit(handle)
-  end, vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: close diff panes, or the whole view" }))
+  end
+
+  local keymap_opts = { buffer = main_bufnr, silent = true }
+  vim.keymap.set(
+    "n",
+    "<CR>",
+    on_main_buf(function()
+      accept_at_cursor(handle)
+    end),
+    vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept whichever side the cursor is on" })
+  )
+  vim.keymap.set(
+    "n",
+    "<leader>mo",
+    on_main_buf(function()
+      accept_hunk(handle, "ours")
+    end),
+    vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept ours" })
+  )
+  vim.keymap.set(
+    "n",
+    "<leader>mt",
+    on_main_buf(function()
+      accept_hunk(handle, "theirs")
+    end),
+    vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept theirs" })
+  )
+  vim.keymap.set(
+    "n",
+    "<leader>mb",
+    on_main_buf(function()
+      accept_hunk(handle, "both")
+    end),
+    vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: accept both" })
+  )
+  vim.keymap.set(
+    "n",
+    "<leader>mn",
+    on_main_buf(function()
+      jump_hunk(handle.main_bufnr, handle.main_win, "next")
+    end),
+    vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: next conflict" })
+  )
+  vim.keymap.set(
+    "n",
+    "<leader>mp",
+    on_main_buf(function()
+      jump_hunk(handle.main_bufnr, handle.main_win, "prev")
+    end),
+    vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: previous conflict" })
+  )
+  vim.keymap.set(
+    "n",
+    "<leader>mw",
+    on_main_buf(function()
+      wand_buffer(handle)
+    end),
+    vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: run the wand on this file" })
+  )
+  vim.keymap.set(
+    "n",
+    "<leader>md",
+    on_main_buf(function()
+      if handle.diff_open then
+        close_diff_panes(handle)
+      else
+        open_diff_panes(handle)
+      end
+    end),
+    vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: toggle ours/result/theirs diff view" })
+  )
+  vim.keymap.set(
+    "n",
+    "q",
+    on_main_buf(function()
+      quit(handle)
+    end),
+    vim.tbl_extend("force", keymap_opts, { desc = "albus-conflictius: close diff panes, or the whole view" })
+  )
 
   highlight_hunks(main_bufnr)
   jump_to_first_hunk(main_bufnr, main_win)
