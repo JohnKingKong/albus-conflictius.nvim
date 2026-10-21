@@ -43,6 +43,21 @@ describe("albus-conflictius.resolve_view", function()
     vim.cmd("tabclose!")
   end)
 
+  it(
+    "marks its tab for floo-network.nvim to leave alone (regression: was silently merged into an existing fireplace)",
+    function()
+      write_file("conflict.txt", "<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n")
+
+      local handle = resolve_view.open(tmpdir, "conflict.txt", {})
+
+      local tabid = vim.api.nvim_win_get_tabpage(handle.main_win)
+      local ok, value = pcall(vim.api.nvim_tabpage_get_var, tabid, "floo_ignore_external_tab")
+      assert.is_true(ok and value == true)
+
+      vim.cmd("tabclose!")
+    end
+  )
+
   it("<CR> accepts ours when the cursor is on the ours side of the hunk", function()
     write_file("conflict.txt", "<<<<<<< HEAD\nours line\n=======\ntheirs line\n>>>>>>> branch\n")
 

@@ -374,6 +374,17 @@ function M.open(cwd, path, opts)
   opts = opts or {}
 
   vim.cmd("tabnew")
+  -- Soft integration, no hard dependency on floo-network.nvim being
+  -- installed: nvim_tabpage_set_var is just a generic Neovim API, inert if
+  -- floo-network isn't present. Without this, floo-network's
+  -- external-tabs handling (see its own floo/external_tabs.lua) can't tell
+  -- this tab apart from one opened externally (e.g. lazygit's
+  -- --remote-tab) -- confirmed: it silently redirected this tab's file
+  -- into an existing fireplace and tabclose'd it, taking the keymaps/
+  -- highlighting this function is about to set up down with it, and
+  -- leaving a conflict dashboard's floating window stranded on top of
+  -- whatever ended up in the fireplace instead.
+  pcall(vim.api.nvim_tabpage_set_var, vim.api.nvim_get_current_tabpage(), "floo_ignore_external_tab", true)
   vim.cmd("edit " .. vim.fn.fnameescape(cwd .. "/" .. path))
   local main_bufnr = vim.api.nvim_get_current_buf()
   local main_win = vim.api.nvim_get_current_win()
